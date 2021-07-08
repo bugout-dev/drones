@@ -18,6 +18,7 @@ class EnvironmentVariable:
 
 env_param_mapping = {
     "SPIRE_CORS_ALLOWED_ORIGINS": "/spire/prod/SPIRE_CORS_ALLOWED_ORIGINS",
+    "BROOD_CORS_ALLOWED_ORIGINS": "/brood/prod/BROOD_CORS_ALLOWED_ORIGINS",
     "SPIRE_DB_URI": "/spire/prod/SPIRE_DB_URI",
     "BROOD_DB_URI": "/brood/prod/BROOD_DB_URI",
     "AWS_S3_DRONES_BUCKET": "/spire/prod/AWS_S3_DRONES_BUCKET",
