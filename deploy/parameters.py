@@ -25,6 +25,7 @@ env_param_mapping = {
     "BUGOUT_DRONES_TOKEN": "/drones/prod/BUGOUT_DRONES_TOKEN",
     "BUGOUT_DRONES_TOKEN_HEADER": "/drones/prod/BUGOUT_DRONES_TOKEN_HEADER",
     "BUGOUT_AUTH_URL": "/spire/prod/BUGOUT_AUTH_URL",
+    "BUGOUT_REDIS_PASSWORD": "/drones/prod/BUGOUT_REDIS_PASSWORD"
 }
 
 
