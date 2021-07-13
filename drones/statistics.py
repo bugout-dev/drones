@@ -377,10 +377,11 @@ def generate_events_summary(
     for group_count, event_count in events_with_errors_counts_distribution:
         events_summary[f"errors_histogram"][group_count] = event_count
         total_event_errors_count += event_count
-    
-    # 0 group count
-    events_summary[f"errors_histogram"]["0"] = total_event_count - total_event_errors_count
 
+    # 0 group count
+    events_summary[f"errors_histogram"]["0"] = (
+        total_event_count - total_event_errors_count
+    )
 
     return events_summary
 

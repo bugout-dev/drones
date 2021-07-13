@@ -9,10 +9,11 @@ from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
 
-from .data import StatsTypes, TimeScales
+from .data import StatsTypes, TimeScales, HumbugReport, HumbugCreateReportTask
 from . import reports
 from . import statistics
 from .migrations import ACTIONS, MIGRATIONS
+from .humbug_reports import process_humbug_tasks_queue
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -154,6 +155,20 @@ def statistics_generate_handler(args: argparse.Namespace):
         db_session_spire.close()
 
 
+def push_reports_from_redis(args: argparse.Namespace):
+
+    db_session_spire = session_local_spire()
+
+    try:
+        process_humbug_tasks_queue(db_session=db_session_spire)
+    except Exception as err:
+        print(
+            f"Unexpected error occurred due processing humbug reports statistics by drone: {str(err)}"
+        )
+    finally:
+        db_session_spire.close()
+
+
 def migration_handler(args: argparse.Namespace):
     action = MIGRATIONS[args.migration][args.action]
     action(args.journal, args.debug)
@@ -235,6 +250,20 @@ def main() -> None:
         "--debug", action="store_true", help="Set this flag to run in debug mode"
     )
     parser_migrate.set_defaults(func=migration_handler)
+
+    parser_humbug_reports = subcommands.add_parser(
+        "humbug_reports", description="Drone humbug reports"
+    )
+    parser_humbug_reports.set_defaults(
+        func=lambda _: parser_humbug_reports.print_help()
+    )
+    subcommands_humbug_reports = parser_humbug_reports.add_subparsers(
+        description="Drone humbug reports commands"
+    )
+    subcommands_humbug_reports.add_parser(
+        "upload_pool", description="Pushed cached humbug reports to database"
+    )
+    parser_humbug_reports.set_defaults(func=push_reports_from_redis)
 
     args = parser.parse_args()
     args.func(args)

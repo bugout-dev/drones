@@ -51,3 +51,15 @@ class Jobs(BaseModel):
 class UpdateStatsResponce(BaseModel):
     modified_since: datetime
     journal_statistics: Optional[List[Dict[str, Any]]] = None
+
+
+# TODO(andrey) use models from spire.
+class HumbugReport(BaseModel):
+    title: str
+    content: str
+    tags: List[str] = Field(default_factory=list)
+
+
+class HumbugCreateReportTask(BaseModel):
+    report: HumbugReport
+    bugout_token: UUID
