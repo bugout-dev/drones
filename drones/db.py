@@ -12,8 +12,6 @@ from .settings import (
 @contextmanager
 def yield_redis_connection_from_env_ctx():
     try:
-        print(BUGOUT_REDIS_URL)
-        print(BUGOUT_REDIS_PASSWORD)
         redis_client = redis.Redis().from_url(
             f"redis://:{BUGOUT_REDIS_PASSWORD}@{BUGOUT_REDIS_URL}"
         )
