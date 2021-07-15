@@ -1,7 +1,6 @@
 import argparse
 from datetime import datetime
 from distutils.util import strtobool
-from drones.settings import REDIS_FILED_REPORTS
 from typing import List, Optional
 from uuid import UUID
 import time
@@ -25,7 +24,7 @@ from .settings import (
     REPORTS_CHUNK_SIZE,
     WAITING_UNTIL_NEW_REPORTS,
     REDIS_REPORTS_QUEUE,
-    REDIS_FILED_REPORTS,
+    REDIS_FAILED_REPORTS_QUEUE,
 )
 
 
@@ -333,7 +332,7 @@ def main() -> None:
     polling_command.set_defaults(func=push_reports_from_redis)
 
     pick_command = subcommands_humbug_reports.add_parser(
-        "pick", description="Pushed cached humbug reports to database"
+        "peek", description="Pushed cached humbug reports to database"
     )
     pick_command.add_argument(
         "-n",
@@ -346,8 +345,8 @@ def main() -> None:
         "-q",
         "--queue-key",
         type=str,
-        default=REDIS_FILED_REPORTS,
-        help=f"Queue from which you want to get data current reports queue {{{REDIS_REPORTS_QUEUE}}} current errors queue {{{REDIS_FILED_REPORTS}}}.",
+        default=REDIS_FAILED_REPORTS_QUEUE,
+        help=f"Queue from which you want to get data current reports queue {{{REDIS_REPORTS_QUEUE}}} current errors queue {{{REDIS_FAILED_REPORTS_QUEUE}}}.",
     )
     pick_command.add_argument(
         "-s",
