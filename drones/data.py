@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from os import error
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
@@ -18,6 +19,11 @@ class TimeScales(Enum):
     month = "month"
     week = "week"
     day = "day"
+
+
+class RedisPickCommand(Enum):
+    lpop = "lpop"
+    lrange = "lrange"
 
 
 class GroupOwner(BaseModel):
@@ -63,3 +69,8 @@ class HumbugReport(BaseModel):
 class HumbugCreateReportTask(BaseModel):
     report: HumbugReport
     bugout_token: UUID
+
+class HumbugFiledReportTask(BaseModel):
+    report: HumbugReport
+    bugout_token: UUID
+    error: str
