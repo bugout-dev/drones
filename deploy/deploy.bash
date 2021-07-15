@@ -18,6 +18,9 @@ SERVICE_FILE="${SCRIPT_DIR}/drones.service"
 DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
 DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
 
+# Drones Humbug report loader
+DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
+
 set -eu
 
 echo
@@ -48,3 +51,12 @@ cp "${DRONES_STATISTICS_SERVICE_FILE}" /etc/systemd/system/dronesstatistics.serv
 cp "${DRONES_STATISTICS_TIMER_FILE}" /etc/systemd/system/dronesstatistics.timer
 systemctl daemon-reload
 systemctl restart dronesstatistics.timer
+
+echo
+echo
+echo "Replacing existing humbug report loader service definition with ${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+chmod 644 "${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+cp "${DRONES_HUMBUG_REPORT_LOADER_FILE}" /etc/systemd/system/droneshumbugreports.service
+systemctl daemon-reload
+systemctl enable droneshumbugreports.service
+systemctl restart droneshumbugreports.service
