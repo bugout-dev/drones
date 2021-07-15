@@ -23,18 +23,18 @@ env_param_mapping = {
     "BROOD_DB_URI": "/brood/prod/BROOD_DB_URI",
     "AWS_S3_DRONES_BUCKET": "/spire/prod/AWS_S3_DRONES_BUCKET",
     "AWS_S3_DRONES_BUCKET_STATISTICS_PREFIX": "/spire/prod/AWS_S3_DRONES_BUCKET_STATISTICS_PREFIX",
-    "BUGOUT_DRONES_TOKEN": "/drones/prod/BUGOUT_DRONES_TOKEN",
-    "BUGOUT_DRONES_TOKEN_HEADER": "/drones/prod/BUGOUT_DRONES_TOKEN_HEADER",
     "BUGOUT_AUTH_URL": "/spire/prod/BUGOUT_AUTH_URL",
     "BUGOUT_CLIENT_ID_HEADER": "/spire/prod/BUGOUT_CLIENT_ID_HEADER",
     "BUGOUT_BOT_INSTALLATION_TOKEN_HEADER": "/spire/prod/BUGOUT_BOT_INSTALLATION_TOKEN_HEADER",
-    "BUGOUT_REDIS_PASSWORD": "/drones/prod/BUGOUT_REDIS_PASSWORD"
 }
 
 
-def get_parameters() -> List[Dict[str, Any]]:
+def get_parameters(path: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Retrieve parameters from AWS SSM Parameter Store. Decrypts any encrypted parameters.
+
+    This function gets the parameters from the specified path (if provided), but ALSO uses the
+    `env_param_mapping` to get necessary parameters that don't live on the specified path.
 
     Relies on the appropriate environment variables to authenticate against AWS:
     https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
@@ -46,6 +46,17 @@ def get_parameters() -> List[Dict[str, Any]]:
         response = ssm.get_parameter(**kwargs)
         new_parameter = response.get("Parameter", {})
         parameters.append(new_parameter)
+
+    if path is not None:
+        next_token: Optional[bool] = True
+        while next_token is not None:
+            kwargs = {"Path": path, "Recursive": False, "WithDecryption": True}
+            if next_token is not True:
+                kwargs["NextToken"] = next_token
+            response = ssm.get_parameters_by_path(**kwargs)
+            new_parameters = response.get("Parameters", [])
+            parameters.extend(new_parameters)
+            next_token = response.get("NextToken")
 
     return parameters
 
@@ -79,7 +90,7 @@ def extract_handler(args: argparse.Namespace) -> None:
     """
     Save environment variables to file.
     """
-    result = env_string(map(parameter_to_env, get_parameters()), args.export)
+    result = env_string(map(parameter_to_env, get_parameters(args.path)), args.export)
     with args.outfile as ofp:
         print(result, file=ofp)
 
@@ -115,6 +126,12 @@ if __name__ == "__main__":
         "--export",
         action="store_true",
         help="Set to output environment strings with export statements",
+    )
+    parser_extract.add_argument(
+        "-p",
+        "--path",
+        default=None,
+        help="SSM path from which to pull environment variables (pull is NOT recursive)",
     )
     parser_extract.set_defaults(func=extract_handler)
 
