@@ -9,10 +9,23 @@ from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
 
-from .data import StatsTypes, TimeScales
+from .data import (
+    StatsTypes,
+    TimeScales,
+    HumbugReport,
+    HumbugCreateReportTask,
+    RedisPickCommand,
+)
 from . import reports
 from . import statistics
 from .migrations import ACTIONS, MIGRATIONS
+from .humbug_reports import process_humbug_tasks_queue, pick_humbug_tasks_queue
+from .settings import (
+    REPORTS_CHUNK_SIZE,
+    WAITING_UNTIL_NEW_REPORTS,
+    REDIS_REPORTS_QUEUE,
+    REDIS_FAILED_REPORTS_QUEUE,
+)
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -154,6 +167,39 @@ def statistics_generate_handler(args: argparse.Namespace):
         db_session_spire.close()
 
 
+def push_reports_from_redis(args: argparse.Namespace):
+
+    db_session_spire = session_local_spire()
+
+    try:
+        process_humbug_tasks_queue(
+            db_session=db_session_spire,
+            queue_key=args.queue_key,
+            upload_command=args.command,
+            chunk_size=args.chunk_size,
+            block=args.blocking,
+            timeout=args.timeout,
+        )
+    except Exception as err:
+        print(
+            f"Unexpected error occurred due processing humbug reports statistics by drone: {str(err)}"
+        )
+    finally:
+        db_session_spire.close()
+
+
+def pick_reports_from_redis(args: argparse.Namespace):
+    try:
+        pick_humbug_tasks_queue(
+            queue_key=args.queue_key,
+            command=args.command,
+            chunk_size=args.chunk_size,
+            start=args.start_index,
+        )
+    except Exception as err:
+        print(f"Unexpected error on pick command: {str(err)}")
+
+
 def migration_handler(args: argparse.Namespace):
     action = MIGRATIONS[args.migration][args.action]
     action(args.journal, args.debug)
@@ -236,6 +282,88 @@ def main() -> None:
     )
     parser_migrate.set_defaults(func=migration_handler)
 
+    parser_humbug_reports = subcommands.add_parser(
+        "humbug_reports", description="Drone humbug reports"
+    )
+    parser_humbug_reports.set_defaults(
+        func=lambda _: parser_humbug_reports.print_help()
+    )
+    subcommands_humbug_reports = parser_humbug_reports.add_subparsers(
+        description="Drone humbug reports commands"
+    )
+    polling_command = subcommands_humbug_reports.add_parser(
+        "start_polling", description="Pushed cached humbug reports to database"
+    )
+    polling_command.add_argument(
+        "-t",
+        "--timeout",
+        type=int,
+        default=WAITING_UNTIL_NEW_REPORTS,
+        help="Timeout for blocking mode, before trying to fetch new reports.",
+    )
+    polling_command.add_argument(
+        "-b",
+        "--blocking",
+        action="store_true",
+        help="true: Mode of processing reports wait for a new entry. false: Processed until the end of reports.",
+    )
+    polling_command.add_argument(
+        "-n",
+        "--chunk-size",
+        type=int,
+        default=REPORTS_CHUNK_SIZE,
+        help="Size of processing reports at the moment.",
+    )
+    polling_command.add_argument(
+        "-q",
+        "--queue-key",
+        type=str,
+        default=REDIS_REPORTS_QUEUE,
+        help="Queue from which you want geting data.",
+    )
+    polling_command.add_argument(
+        "-c",
+        "--command",
+        type=str,
+        choices=[commands.value for commands in RedisPickCommand],
+        default="lpop",
+        help="Redis command for extracting data from the queue.",
+    )
+    polling_command.set_defaults(func=push_reports_from_redis)
+
+    pick_command = subcommands_humbug_reports.add_parser(
+        "peek", description="Pushed cached humbug reports to database"
+    )
+    pick_command.add_argument(
+        "-n",
+        "--chunk-size",
+        type=int,
+        default=REPORTS_CHUNK_SIZE,
+        help="Size of processing reports at the moment.",
+    )
+    pick_command.add_argument(
+        "-q",
+        "--queue-key",
+        type=str,
+        default=REDIS_FAILED_REPORTS_QUEUE,
+        help=f"Queue from which you want to get data current reports queue {{{REDIS_REPORTS_QUEUE}}} current errors queue {{{REDIS_FAILED_REPORTS_QUEUE}}}.",
+    )
+    pick_command.add_argument(
+        "-s",
+        "--start-index",
+        type=int,
+        default=0,
+        help="Queue from which you want to get data.",
+    )
+    pick_command.add_argument(
+        "-c",
+        "--command",
+        type=str,
+        choices=[commands.value for commands in RedisPickCommand],
+        default="lrange",
+        help=f"Redis command for extracting data from queue.",
+    )
+    pick_command.set_defaults(func=pick_reports_from_redis)
     args = parser.parse_args()
     args.func(args)
 

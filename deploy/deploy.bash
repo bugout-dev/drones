@@ -13,10 +13,14 @@ PARAMETERS_SCRIPT="${SCRIPT_DIR}/parameters.py"
 SECRETS_DIR="${SECRETS_DIR:-/home/ubuntu/drones-secrets}"
 PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
 SERVICE_FILE="${SCRIPT_DIR}/drones.service"
+AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
 # Drones statistics generator
 DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
 DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
+
+# Drones Humbug report loader
+DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
 
 set -eu
 
@@ -29,7 +33,7 @@ echo
 echo
 echo "Retrieving deployment parameters"
 mkdir -p "${SECRETS_DIR}"
-AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -o "${PARAMETERS_ENV_PATH}"
+AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -p "${AWS_SSM_PARAMETER_PATH}" -o "${PARAMETERS_ENV_PATH}"
 
 echo
 echo
@@ -48,3 +52,12 @@ cp "${DRONES_STATISTICS_SERVICE_FILE}" /etc/systemd/system/dronesstatistics.serv
 cp "${DRONES_STATISTICS_TIMER_FILE}" /etc/systemd/system/dronesstatistics.timer
 systemctl daemon-reload
 systemctl restart dronesstatistics.timer
+
+echo
+echo
+echo "Replacing existing humbug report loader service definition with ${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+chmod 644 "${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+cp "${DRONES_HUMBUG_REPORT_LOADER_FILE}" /etc/systemd/system/droneshumbugreports.service
+systemctl daemon-reload
+systemctl enable droneshumbugreports.service
+systemctl restart droneshumbugreports.service
