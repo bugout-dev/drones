@@ -333,7 +333,7 @@ def main() -> None:
     polling_command.set_defaults(func=push_reports_from_redis)
 
     pick_command = subcommands_humbug_reports.add_parser(
-        "pick", description="Pushed cached humbug reports to database"
+        "peek", description="Pushed cached humbug reports to database"
     )
     pick_command.add_argument(
         "-n",

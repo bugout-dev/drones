@@ -48,7 +48,7 @@ def upload_report_tasks(
         )
 
 
-def get_journal_ids_by_tokens(
+def get_humbug_integrations(
     db_session: Session, report_tasks: List[HumbugCreateReportTask]
 ):
     """
@@ -83,7 +83,7 @@ def get_journal_ids_by_tokens(
     return {str(token): journal_id for token, journal_id in journal_and_tokens.all()}
 
 
-def push_to_database(
+def write_reports(
     db_session: Session,
     redis_client: Redis,
     report_tasks: List[HumbugCreateReportTask],
@@ -162,11 +162,11 @@ def process_humbug_tasks_queue(
                         return
 
                 # fetching pairs of journal ids and tokens
-                journal_by_token = get_journal_ids_by_tokens(
+                journal_by_token = get_humbug_integrations(
                     db_session=db_session, report_tasks=report_tasks
                 )
 
-                push_to_database(
+                write_reports(
                     db_session=db_session,
                     redis_client=redis_client,
                     report_tasks=report_tasks,
