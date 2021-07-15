@@ -13,6 +13,7 @@ PARAMETERS_SCRIPT="${SCRIPT_DIR}/parameters.py"
 SECRETS_DIR="${SECRETS_DIR:-/home/ubuntu/drones-secrets}"
 PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
 SERVICE_FILE="${SCRIPT_DIR}/drones.service"
+AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
 # Drones statistics generator
 DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
@@ -32,7 +33,7 @@ echo
 echo
 echo "Retrieving deployment parameters"
 mkdir -p "${SECRETS_DIR}"
-AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -o "${PARAMETERS_ENV_PATH}"
+AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -p "${AWS_SSM_PARAMETER_PATH}" -o "${PARAMETERS_ENV_PATH}"
 
 echo
 echo
