@@ -3,9 +3,9 @@ Description=Load Humbug reports from the Redis reports queue to the database
 After=network.target
 
 [Service]
-Type=oneshot
 User=ubuntu
 Group=www-data
 WorkingDirectory=/home/ubuntu/drones
 EnvironmentFile=/home/ubuntu/drones-secrets/app.env
 ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli humbug_reports start_polling --blocking
+SyslogIdentifier=droneshumbugreports
