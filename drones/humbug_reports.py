@@ -22,7 +22,9 @@ from .settings import (
 )
 
 
-def upload_report_tasks(redis_client: Redis, queue_key: str, command: str, chunk_size: int):
+def upload_report_tasks(
+    redis_client: Redis, queue_key: str, command: str, chunk_size: int
+):
 
     """
     Return parsed reports from redis
@@ -33,12 +35,17 @@ def upload_report_tasks(redis_client: Redis, queue_key: str, command: str, chunk
             command, queue_key, 0, chunk_size - 1
         )
     else:
-        reports_json = redis_client.execute_command(
-            command, queue_key, chunk_size
+        reports_json = redis_client.execute_command(command, queue_key, chunk_size)
+    try:
+        if reports_json is not None:
+            # parse reports object
+            return [
+                HumbugCreateReportTask(**json.loads(report)) for report in reports_json
+            ]
+    except Exception as err:
+        redis_client.rpush(
+            REDIS_FILED_REPORTS, *reports_json,
         )
-    if reports_json is not None:
-        # parse reports object
-        return [HumbugCreateReportTask(**json.loads(report)) for report in reports_json]
 
 
 def get_journal_ids_by_tokens(
@@ -73,7 +80,7 @@ def get_journal_ids_by_tokens(
         .distinct()
     )
 
-    return dict(journal_and_tokens.all())
+    return {str(token): journal_id for token, journal_id in journal_and_tokens.all()}
 
 
 def push_to_database(
@@ -90,17 +97,16 @@ def push_to_database(
     for report_task in report_tasks:
         try:
 
-            if not journal_by_token.get(report_task.bugout_token):
+            if not journal_by_token.get(str(report_task.bugout_token)):
                 continue
 
             entry_object = journal_models.JournalEntry(
-                journal_id=journal_by_token[report_task.bugout_token],
+                journal_id=journal_by_token[str(report_task.bugout_token)],
                 title=report_task.report.title,
                 content=report_task.report.content,
                 context_id=str(report_task.bugout_token),
                 context_type="humbug",
             )
-
 
             report_task.report.tags.append(
                 f"reporter_token:{str(report_task.bugout_token)}"
@@ -119,9 +125,12 @@ def push_to_database(
         except Exception as err:
             redis_client.rpush(
                 REDIS_FILED_REPORTS,
-                HumbugFiledReportTask(bugout_token=report_task.bugout_token, report=report_task.report, error=str(err)).json(),
+                HumbugFiledReportTask(
+                    bugout_token=report_task.bugout_token,
+                    report=report_task.report,
+                    error=str(err),
+                ).json(),
             )
-
 
 
 def process_humbug_tasks_queue(
@@ -132,7 +141,6 @@ def process_humbug_tasks_queue(
     block: bool,
     timeout: int,
 ):
-
     with yield_redis_connection_from_env_ctx() as redis_client:
         print("Polling reports queue start")
         while True:
@@ -157,7 +165,7 @@ def process_humbug_tasks_queue(
                 journal_by_token = get_journal_ids_by_tokens(
                     db_session=db_session, report_tasks=report_tasks
                 )
-                print("push_to_database")
+
                 push_to_database(
                     db_session=db_session,
                     redis_client=redis_client,
@@ -171,11 +179,8 @@ def process_humbug_tasks_queue(
 
 
 def pick_humbug_tasks_queue(
-    queue_key: str,
-    command: str,
-    chunk_size: int,
-    start: int,
-    ):
+    queue_key: str, command: str, chunk_size: int, start: int,
+):
 
     with yield_redis_connection_from_env_ctx() as redis_client:
         if command == "lrange":
@@ -183,9 +188,7 @@ def pick_humbug_tasks_queue(
                 command, queue_key, start, chunk_size - 1
             )
         else:
-            reports_json = redis_client.execute_command(
-                command, queue_key, chunk_size
-            )
+            reports_json = redis_client.execute_command(command, queue_key, chunk_size)
         if reports_json:
             for i in reports_json:
                 print(reports_json)

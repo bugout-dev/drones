@@ -70,6 +70,7 @@ class HumbugCreateReportTask(BaseModel):
     report: HumbugReport
     bugout_token: UUID
 
+
 class HumbugFiledReportTask(BaseModel):
     report: HumbugReport
     bugout_token: UUID

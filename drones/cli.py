@@ -21,7 +21,12 @@ from . import reports
 from . import statistics
 from .migrations import ACTIONS, MIGRATIONS
 from .humbug_reports import process_humbug_tasks_queue, pick_humbug_tasks_queue
-from .settings import REPORTS_CHUNK_SIZE, WAITING_UNTIL_NEW_REPORTS, REDIS_REPORTS_QUEUE, REDIS_FILED_REPORTS
+from .settings import (
+    REPORTS_CHUNK_SIZE,
+    WAITING_UNTIL_NEW_REPORTS,
+    REDIS_REPORTS_QUEUE,
+    REDIS_FILED_REPORTS,
+)
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -183,18 +188,18 @@ def push_reports_from_redis(args: argparse.Namespace):
     finally:
         db_session_spire.close()
 
+
 def pick_reports_from_redis(args: argparse.Namespace):
     try:
         pick_humbug_tasks_queue(
             queue_key=args.queue_key,
             command=args.command,
             chunk_size=args.chunk_size,
-            start=args.start_index
+            start=args.start_index,
         )
     except Exception as err:
-        print(
-            f"Unexpected error on pick command: {str(err)}"
-        )
+        print(f"Unexpected error on pick command: {str(err)}")
+
 
 def migration_handler(args: argparse.Namespace):
     action = MIGRATIONS[args.migration][args.action]
@@ -300,8 +305,7 @@ def main() -> None:
     polling_command.add_argument(
         "-b",
         "--blocking",
-        type=bool,
-        default=True,
+        action="store_true",
         help="true: Mode of processing reports wait for a new entry. false: Processed until the end of reports.",
     )
     polling_command.add_argument(
@@ -343,7 +347,7 @@ def main() -> None:
         "--queue-key",
         type=str,
         default=REDIS_FILED_REPORTS,
-        help="Queue from which you want to get data.",
+        help=f"Queue from which you want to get data current reports queue {{{REDIS_REPORTS_QUEUE}}} current errors queue {{{REDIS_FILED_REPORTS}}}.",
     )
     pick_command.add_argument(
         "-s",
@@ -358,7 +362,7 @@ def main() -> None:
         type=str,
         choices=[commands.value for commands in RedisPickCommand],
         default="lrange",
-        help=f"Redis command for extract data from queue current reports queue {{{REDIS_REPORTS_QUEUE}}} current errors queue {{{REDIS_FILED_REPORTS}}}.",
+        help=f"Redis command for extracting data from queue.",
     )
     pick_command.set_defaults(func=pick_reports_from_redis)
     args = parser.parse_args()
