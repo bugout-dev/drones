@@ -44,7 +44,7 @@ def upload_report_tasks(
             ]
     except Exception as err:
         redis_client.rpush(
-            REDIS_FILED_REPORTS, *reports_json,
+            REDIS_FAILED_REPORTS_QUEUE, *reports_json,
         )
 
 
@@ -124,7 +124,7 @@ def write_reports(
             db_session.commit()
         except Exception as err:
             redis_client.rpush(
-                REDIS_FILED_REPORTS,
+                REDIS_FAILED_REPORTS_QUEUE,
                 HumbugFiledReportTask(
                     bugout_token=report_task.bugout_token,
                     report=report_task.report,
