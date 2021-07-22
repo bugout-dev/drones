@@ -10,7 +10,7 @@ import redis
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
 from sqlalchemy.orm.session import Session
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, create_session
 from .db import yield_redis_connection_from_env_ctx
 
 
@@ -106,6 +106,8 @@ def write_reports(
                 content=report_task.report.content,
                 context_id=str(report_task.bugout_token),
                 context_type="humbug",
+                created_at=report_task.reported_at,
+                updated_at=report_task.reported_at
             )
 
             report_task.report.tags.append(
@@ -125,7 +127,7 @@ def write_reports(
         except Exception as err:
             redis_client.rpush(
                 REDIS_FAILED_REPORTS_QUEUE,
-                HumbugFiledReportTask(
+                HumbugFailedReportTask(
                     bugout_token=report_task.bugout_token,
                     report=report_task.report,
                     error=str(err),
