@@ -5,7 +5,7 @@ import time
 from redis import Redis
 from typing import Dict, Optional, List
 
-from .data import HumbugCreateReportTask, HumbugFiledReportTask
+from .data import HumbugCreateReportTask, HumbugFailedReportTask
 import redis
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
@@ -142,11 +142,12 @@ def process_humbug_tasks_queue(
     timeout: int,
 ):
     with yield_redis_connection_from_env_ctx() as redis_client:
+        print(f"Redis is connected:{redis_client.execute_command('PING')}")
         print("Polling reports queue start")
         while True:
-            # logic of get all new reports
+           
             try:
-
+                 # get all new reports
                 report_tasks = upload_report_tasks(
                     redis_client=redis_client,
                     queue_key=queue_key,
