@@ -10,7 +10,7 @@ from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
 from spire.humbug.data import HumbugCreateReportTask
 from sqlalchemy.orm.session import Session
-from sqlalchemy.orm import aliased, create_session
+from sqlalchemy.orm import aliased
 from spire.db import redis_connection
 
 
@@ -192,7 +192,7 @@ def pick_humbug_tasks_queue(
 ):
 
     redis_client = redis_connection()
-    
+
     if command == "lrange":
         reports_json = redis_client.execute_command(
             command, queue_key, start, chunk_size - 1
