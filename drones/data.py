@@ -3,6 +3,7 @@ from enum import Enum
 from os import error
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+from spire.humbug.data import HumbugCreateReportTask, HumbugReport
 
 from pydantic import BaseModel, Field
 
@@ -59,17 +60,17 @@ class UpdateStatsResponce(BaseModel):
     journal_statistics: Optional[List[Dict[str, Any]]] = None
 
 
-# TODO(andrey) use models from spire.
-class HumbugReport(BaseModel):
-    title: str
-    content: str
-    tags: List[str] = Field(default_factory=list)
+# # TODO(andrey) use models from spire.
+# class HumbugReport(BaseModel):
+#     title: str
+#     content: str
+#     tags: List[str] = Field(default_factory=list)
 
 
-class HumbugCreateReportTask(BaseModel):
-    report: HumbugReport
-    bugout_token: UUID
-    reported_at: Optional[datetime]
+# class HumbugCreateReportTask(BaseModel):
+#     report: HumbugReport
+#     bugout_token: UUID
+#     reported_at: Optional[datetime]
 
 
 class HumbugFailedReportTask(BaseModel):
