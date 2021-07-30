@@ -166,22 +166,10 @@ def process_humbug_tasks_queue(
                     return
 
             # fetching pairs of journal ids and tokens
-            try:
-                journal_by_token = get_humbug_integrations(
-                    db_session=db_session, report_tasks=report_tasks
-                )
-            except Exception as err:
-                if report_tasks:
-                    for tasks in report_tasks:
-                        redis_client.rpush(
-                            REDIS_FAILED_REPORTS_QUEUE,
-                            HumbugFailedReportTask(
-                                bugout_token=tasks.bugout_token,
-                                report=tasks.report,
-                                reported_at=tasks.reported_at,
-                                error=str(err),
-                            ).json(),
-                        )
+
+            journal_by_token = get_humbug_integrations(
+                db_session=db_session, report_tasks=report_tasks
+            )
 
             written_count = write_reports(
                 db_session=db_session,
@@ -192,7 +180,17 @@ def process_humbug_tasks_queue(
             print(f"{written_count} pushed to database")
 
         except Exception as err:
-            print(err)
+            if report_tasks:
+                for tasks in report_tasks:
+                    redis_client.rpush(
+                        REDIS_FAILED_REPORTS_QUEUE,
+                        HumbugFailedReportTask(
+                            bugout_token=tasks.bugout_token,
+                            report=tasks.report,
+                            reported_at=tasks.reported_at,
+                            error=str(err),
+                        ).json(),
+                    )
 
 
 def pick_humbug_tasks_queue(
