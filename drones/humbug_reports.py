@@ -111,11 +111,11 @@ def write_reports(
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
             entry_object.tags.extend(
-                list(
-                    set(
-                        [journal_models.JournalEntryTag(tag=tag) for tag in tags if tag]
-                    )
-                )
+                [
+                    journal_models.JournalEntryTag(tag=tag)
+                    for tag in list(set(tags))
+                    if tag
+                ]
             )
             db_session.add(entry_object)
             db_session.commit()
@@ -131,6 +131,7 @@ def write_reports(
                     error=str(err),
                 ).json(),
             )
+
             db_session.rollback()
     return pushed
 
@@ -180,6 +181,7 @@ def process_humbug_tasks_queue(
             print(f"{written_count} pushed to database")
 
         except Exception as err:
+            print(err)
             if report_tasks:
                 for tasks in report_tasks:
                     redis_client.rpush(
