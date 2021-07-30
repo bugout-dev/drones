@@ -28,7 +28,7 @@ def upload_report_tasks(
 
     """
     Return parsed reports from redis
-    
+
     """
     if command == "lrange":
         reports_json = redis_client.execute_command(
@@ -44,7 +44,8 @@ def upload_report_tasks(
             ]
     except Exception as err:
         redis_client.rpush(
-            REDIS_FAILED_REPORTS_QUEUE, *reports_json,
+            REDIS_FAILED_REPORTS_QUEUE,
+            *reports_json,
         )
 
 
@@ -131,6 +132,7 @@ def write_reports(
                     error=str(err),
                 ).json(),
             )
+            db_session.rollback()
 
 
 def process_humbug_tasks_queue(
@@ -179,7 +181,10 @@ def process_humbug_tasks_queue(
 
 
 def pick_humbug_tasks_queue(
-    queue_key: str, command: str, chunk_size: int, start: int,
+    queue_key: str,
+    command: str,
+    chunk_size: int,
+    start: int,
 ):
 
     with yield_redis_connection_from_env_ctx() as redis_client:
