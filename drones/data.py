@@ -64,4 +64,4 @@ class HumbugFailedReportTask(BaseModel):
     report: HumbugReport
     reported_at: Optional[datetime]
     bugout_token: UUID
-    error: str
+    error: Optional[str] = None
