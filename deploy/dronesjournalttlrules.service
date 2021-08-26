@@ -1,0 +1,11 @@
+[Unit]
+Description=Execute journal rules
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/drones
+EnvironmentFile=/home/ubuntu/drones-secrets/app.env
+ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli rules execute

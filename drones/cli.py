@@ -214,29 +214,37 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     """
     db_session_spire = session_local_spire()
     try:
-        rule = db_session_spire.query(JournalTtl).filter(JournalTtl.id == args.id).one()
-        entries_query = db_session_spire.query(JournalEntry).filter(
-            JournalEntry.journal_id == rule.journal_id
-        )
+        rules_query = db_session_spire.query(JournalTtl)
+        if args.id is not None:
+            rules_query = rules_query.filter(JournalTtl.id == args.id)
+        rules = rules_query.all()
 
-        for c_key, c_val in rule.conditions.items():
-            if c_key == "ttl":
-                top_entry_timestamp = (
-                    entries_query.order_by(text("updated_at desc"))
-                    .limit(1)
-                    .one()
-                    .updated_at
-                )
-                entries_query = entries_query.filter(
-                    JournalEntry.updated_at
-                    > (top_entry_timestamp - timedelta(seconds=c_val))
-                )
+        for rule in rules:
+            print(f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}")
+            entries_query = db_session_spire.query(JournalEntry).filter(
+                JournalEntry.journal_id == rule.journal_id
+            )
 
-        entries_to_drop = entries_query.all()
-        entries_to_drop_num = len(entries_to_drop)
-        db_session_spire.delete(entries_to_drop)
-        db_session_spire.commit()
-        print(f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}")
+            for c_key, c_val in rule.conditions.items():
+                if c_key == "ttl":
+                    top_entry_timestamp = (
+                        entries_query.order_by(text("updated_at desc"))
+                        .limit(1)
+                        .one()
+                        .updated_at
+                    )
+                    entries_query = entries_query.filter(
+                        JournalEntry.updated_at
+                        > (top_entry_timestamp - timedelta(seconds=c_val))
+                    )
+
+            entries_to_drop = entries_query.all()
+            entries_to_drop_num = len(entries_to_drop)
+            db_session_spire.delete(entries_to_drop)
+            db_session_spire.commit()
+            print(
+                f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
+            )
     finally:
         db_session_spire.close()
 
@@ -414,7 +422,7 @@ def main() -> None:
         "execute", description="Execute ttl rule to journal"
     )
 
-    parser_rules_execute.add_argument("-i", "--id", required=True, help="Rule ID")
+    parser_rules_execute.add_argument("-i", "--id", help="Rule ID")
     parser_rules_execute.set_defaults(func=journal_rules_execute_handler)
 
     args = parser.parse_args()
