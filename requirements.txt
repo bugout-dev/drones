@@ -10,4 +10,4 @@ sendgrid==6.4.4
 SQLAlchemy==1.3.18
 PyJWT==1.7.1
 tqdm==4.60.0
--e git+ssh://git@github.com/bugout-dev/spire.git@8bcc8ca29271813052377cce31268d391a9c67f0#egg=spire
+-e git+ssh://git@github.com/bugout-dev/spire.git@323142cf2d92c601773f8b9910e6ae791bb52764#egg=spire

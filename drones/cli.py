@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from distutils.util import strtobool
 from typing import List, Optional
 from uuid import UUID
@@ -8,12 +8,12 @@ import time
 from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
+from spire.journal.models import JournalEntry, JournalTtl
+from sqlalchemy import func, text
 
 from .data import (
     StatsTypes,
     TimeScales,
-    HumbugReport,
-    HumbugCreateReportTask,
     RedisPickCommand,
 )
 from . import reports
@@ -205,12 +205,49 @@ def migration_handler(args: argparse.Namespace):
     action(args.journal, args.debug)
 
 
+def journal_rules_execute_handler(args: argparse.Namespace) -> None:
+    """
+    Process ttl rules for journal entries.
+
+    ttl - drop entries with timestamp less then most recent entry datetime minus 
+    value from rule in seconds.
+    """
+    db_session_spire = session_local_spire()
+    try:
+        rule = db_session_spire.query(JournalTtl).filter(JournalTtl.id == args.id).one()
+        entries_query = db_session_spire.query(JournalEntry).filter(
+            JournalEntry.journal_id == rule.journal_id
+        )
+
+        for c_key, c_val in rule.conditions.items():
+            if c_key == "ttl":
+                top_entry_timestamp = (
+                    entries_query.order_by(text("updated_at desc"))
+                    .limit(1)
+                    .one()
+                    .updated_at
+                )
+                entries_query = entries_query.filter(
+                    JournalEntry.updated_at
+                    > (top_entry_timestamp - timedelta(seconds=c_val))
+                )
+
+        entries_to_drop = entries_query.all()
+        entries_to_drop_num = len(entries_to_drop)
+        db_session_spire.delete(entries_to_drop)
+        db_session_spire.commit()
+        print(f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}")
+    finally:
+        db_session_spire.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Command Line Interface for Bugout drones"
     )
     parser.set_defaults(func=lambda _: parser.print_help())
     subcommands = parser.add_subparsers(description="Drones commands")
+
     # Reports parser
     parser_reports = subcommands.add_parser("reports", description="Drone reports")
     parser_reports.set_defaults(func=lambda _: parser_reports.print_help())
@@ -364,6 +401,22 @@ def main() -> None:
         help=f"Redis command for extracting data from queue.",
     )
     pick_command.set_defaults(func=pick_reports_from_redis)
+
+    # Journal ttl rules parser
+    parser_rules = subcommands.add_parser(
+        "rules", description="Drone journal ttl rules"
+    )
+    parser_rules.set_defaults(func=lambda _: parser_rules.print_help())
+    subcommands_rules = parser_rules.add_subparsers(
+        description="Drone journal ttl rules commands"
+    )
+    parser_rules_execute = subcommands_rules.add_parser(
+        "execute", description="Execute ttl rule to journal"
+    )
+
+    parser_rules_execute.add_argument("-i", "--id", required=True, help="Rule ID")
+    parser_rules_execute.set_defaults(func=journal_rules_execute_handler)
+
     args = parser.parse_args()
     args.func(args)
 
