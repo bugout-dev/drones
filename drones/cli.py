@@ -9,7 +9,7 @@ from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
 from spire.journal.data import RuleActions
-from spire.journal.models import JournalEntry, JournalEntryTag, JournalTtl
+from spire.journal.models import JournalEntry, JournalEntryTag, JournalTTL
 
 from .data import (
     StatsTypes,
@@ -215,11 +215,11 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     """
     db_session_spire = session_local_spire()
     try:
-        rules_query = db_session_spire.query(JournalTtl).filter(
-            JournalTtl.active == True
+        rules_query = db_session_spire.query(JournalTTL).filter(
+            JournalTTL.active == True
         )
         if args.id is not None:
-            rules_query = rules_query.filter(JournalTtl.id == args.id)
+            rules_query = rules_query.filter(JournalTTL.id == args.id)
         rules = rules_query.all()
 
         for rule in rules:
