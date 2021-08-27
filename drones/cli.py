@@ -8,8 +8,8 @@ import time
 from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
-from spire.journal.models import JournalEntry, JournalTtl
-from sqlalchemy import func, text
+from spire.journal.data import RuleActions
+from spire.journal.models import JournalEntry, JournalEntryTag, JournalTtl
 
 from .data import (
     StatsTypes,
@@ -209,12 +209,15 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     """
     Process ttl rules for journal entries.
 
-    ttl - drop entries with timestamp less then current datetime minus 
+    ttl - (drop or another action from rule) entries with timestamp less then current datetime minus 
     value from rule in seconds.
+    tags - (drop or another action from rule) entries which contains tags in rule
     """
     db_session_spire = session_local_spire()
     try:
-        rules_query = db_session_spire.query(JournalTtl)
+        rules_query = db_session_spire.query(JournalTtl).filter(
+            JournalTtl.active == True
+        )
         if args.id is not None:
             rules_query = rules_query.filter(JournalTtl.id == args.id)
         rules = rules_query.all()
@@ -232,12 +235,26 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
                         JournalEntry.updated_at
                         < (current_timestamp - timedelta(seconds=c_val))
                     )
+                if c_key == "tags":
+                    # For entries with tags in rule conditions
+                    tags_query = db_session_spire.query(JournalEntryTag).filter(
+                        JournalEntryTag.journal_entry_id.in_(
+                            [entry.id for entry in entries_query]
+                        ),
+                        JournalEntryTag.tag.in_(c_val),
+                    )
+                    entries_query = entries_query.filter(
+                        JournalEntry.id.in_(
+                            [tag.journal_entry_id for tag in tags_query]
+                        )
+                    )
 
-            entries_to_drop_num = entries_query.delete(synchronize_session=False)
-            db_session_spire.commit()
-            print(
-                f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
-            )
+            if rule.action == RuleActions.remove.value:
+                entries_to_drop_num = entries_query.delete(synchronize_session=False)
+                db_session_spire.commit()
+                print(
+                    f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
+                )
     finally:
         db_session_spire.close()
 
