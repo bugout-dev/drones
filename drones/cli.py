@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime, timedelta
 from distutils.util import strtobool
+import logging
 from typing import List, Optional
 from uuid import UUID
 import time
@@ -26,6 +27,9 @@ from .settings import (
     REDIS_REPORTS_QUEUE,
     REDIS_FAILED_REPORTS_QUEUE,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -213,6 +217,7 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     value from rule in seconds.
     tags - (drop or another action from rule) entries which contains tags in rule
     """
+    current_timestamp = datetime.now()
     db_session_spire = session_local_spire()
     try:
         rules_query = db_session_spire.query(JournalTTL).filter(
@@ -220,21 +225,22 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
         )
         if args.id is not None:
             rules_query = rules_query.filter(JournalTTL.id == args.id)
-        rules = rules_query.all()
 
-        for rule in rules:
-            print(f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}")
+        for rule in rules_query:
+            logger.info(
+                f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}"
+            )
             entries_query = db_session_spire.query(JournalEntry).filter(
                 JournalEntry.journal_id == rule.journal_id
             )
 
             for c_key, c_val in rule.conditions.items():
                 if c_key == "ttl":
-                    current_timestamp = datetime.now()
                     entries_query = entries_query.filter(
                         JournalEntry.updated_at
                         < (current_timestamp - timedelta(seconds=c_val))
                     )
+                    logger.info(f"- Added condition ttl for rule {rule.id}")
                 if c_key == "tags":
                     # For entries with tags in rule conditions
                     tags_query = db_session_spire.query(JournalEntryTag).filter(
@@ -248,13 +254,22 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
                             [tag.journal_entry_id for tag in tags_query]
                         )
                     )
+                    logger.info(f"- Added condition tags for rule {rule.id}")
 
             if rule.action == RuleActions.remove.value:
-                entries_to_drop_num = entries_query.delete(synchronize_session=False)
-                db_session_spire.commit()
-                print(
-                    f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
-                )
+                try:
+                    entries_to_drop_num = entries_query.delete(
+                        synchronize_session=False
+                    )
+                    db_session_spire.commit()
+                    logger.info(
+                        f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
+                    )
+                except Exception as err:
+                    logger.error(
+                        f"Unable to drop entries for rule {rule.id}, error: {str(err)}"
+                    )
+                    db_session_spire.rollback()
     finally:
         db_session_spire.close()
 
