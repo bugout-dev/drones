@@ -209,7 +209,7 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     """
     Process ttl rules for journal entries.
 
-    ttl - drop entries with timestamp less then most recent entry datetime minus 
+    ttl - drop entries with timestamp less then current datetime minus 
     value from rule in seconds.
     """
     db_session_spire = session_local_spire()
@@ -227,20 +227,13 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
 
             for c_key, c_val in rule.conditions.items():
                 if c_key == "ttl":
-                    top_entry_timestamp = (
-                        entries_query.order_by(text("updated_at desc"))
-                        .limit(1)
-                        .one()
-                        .updated_at
-                    )
+                    current_timestamp = datetime.now()
                     entries_query = entries_query.filter(
                         JournalEntry.updated_at
-                        > (top_entry_timestamp - timedelta(seconds=c_val))
+                        < (current_timestamp - timedelta(seconds=c_val))
                     )
 
-            entries_to_drop = entries_query.all()
-            entries_to_drop_num = len(entries_to_drop)
-            db_session_spire.delete(entries_to_drop)
+            entries_to_drop_num = entries_query.delete(synchronize_session=False)
             db_session_spire.commit()
             print(
                 f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
