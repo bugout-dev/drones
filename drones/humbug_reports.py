@@ -105,6 +105,7 @@ def write_reports(
                 journal_id=journal_by_token[str(report_task.bugout_token)],
                 title=report_task.report.title,
                 content=report_task.report.content,
+                created_at=report_task.created_at,
                 context_id=str(report_task.bugout_token),
                 context_type="humbug",
             )

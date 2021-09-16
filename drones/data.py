@@ -64,6 +64,7 @@ class HumbugReport(BaseModel):
     title: str
     content: str
     tags: List[str] = Field(default_factory=list)
+    created_at : Optional[datetime] = None
 
 
 class HumbugCreateReportTask(BaseModel):
