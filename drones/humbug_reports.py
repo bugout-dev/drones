@@ -104,8 +104,8 @@ def write_reports(
                 content=report_task.report.content,
                 context_id=str(report_task.bugout_token),
                 context_type="humbug",
-                created_at=report_task.reported_at,
-                updated_at=report_task.reported_at,
+                created_at=report_task.report.created_at,
+                updated_at=report_task.report.created_at,
             )
             tags = report_task.report.tags[:]
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
