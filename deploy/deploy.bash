@@ -22,6 +22,10 @@ DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
 # Drones Humbug report loader
 DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
 
+# Drones journal ttl rules
+DRONES_JOURNAL_RULES_SERVICE_FILE="${SCRIPT_DIR}/dronesjournalttlrules.service"
+DRONES_JOURNAL_RULES_TIMER_FILE="${SCRIPT_DIR}/dronesjournalttlrules.timer"
+
 set -eu
 
 echo
@@ -61,3 +65,12 @@ cp "${DRONES_HUMBUG_REPORT_LOADER_FILE}" /etc/systemd/system/droneshumbugreports
 systemctl daemon-reload
 systemctl enable droneshumbugreports.service
 systemctl restart droneshumbugreports.service
+
+echo
+echo
+echo "Replacing existing Drones journal rules service and timer with: ${DRONES_JOURNAL_RULES_SERVICE_FILE}, ${DRONES_JOURNAL_RULES_TIMER_FILE}"
+chmod 644 "${DRONES_JOURNAL_RULES_SERVICE_FILE}" "${DRONES_JOURNAL_RULES_TIMER_FILE}"
+cp "${DRONES_JOURNAL_RULES_SERVICE_FILE}" /etc/systemd/system/dronesjournalttlrules.service
+cp "${DRONES_JOURNAL_RULES_TIMER_FILE}" /etc/systemd/system/dronesjournalttlrules.timer
+systemctl daemon-reload
+systemctl restart dronesjournalttlrules.timer

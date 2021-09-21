@@ -1,6 +1,7 @@
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from distutils.util import strtobool
+import logging
 from typing import List, Optional
 from uuid import UUID
 import time
@@ -8,12 +9,12 @@ import time
 from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
+from spire.journal.data import RuleActions
+from spire.journal.models import JournalEntry, JournalEntryTag, JournalTTL
 
 from .data import (
     StatsTypes,
     TimeScales,
-    HumbugReport,
-    HumbugCreateReportTask,
     RedisPickCommand,
 )
 from . import reports
@@ -26,6 +27,9 @@ from .settings import (
     REDIS_REPORTS_QUEUE,
     REDIS_FAILED_REPORTS_QUEUE,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -205,12 +209,78 @@ def migration_handler(args: argparse.Namespace):
     action(args.journal, args.debug)
 
 
+def journal_rules_execute_handler(args: argparse.Namespace) -> None:
+    """
+    Process ttl rules for journal entries.
+
+    ttl - (drop or another action from rule) entries with timestamp less then current datetime minus 
+    value from rule in seconds.
+    tags - (drop or another action from rule) entries which contains tags in rule
+    """
+    current_timestamp = datetime.now()
+    db_session_spire = session_local_spire()
+    try:
+        rules_query = db_session_spire.query(JournalTTL).filter(
+            JournalTTL.active == True
+        )
+        if args.id is not None:
+            rules_query = rules_query.filter(JournalTTL.id == args.id)
+
+        for rule in rules_query:
+            logger.info(
+                f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}"
+            )
+            entries_query = db_session_spire.query(JournalEntry).filter(
+                JournalEntry.journal_id == rule.journal_id
+            )
+
+            for c_key, c_val in rule.conditions.items():
+                if c_key == "ttl":
+                    entries_query = entries_query.filter(
+                        JournalEntry.updated_at
+                        < (current_timestamp - timedelta(seconds=c_val))
+                    )
+                    logger.info(f"- Added condition ttl for rule {rule.id}")
+                if c_key == "tags":
+                    # For entries with tags in rule conditions
+                    tags_query = db_session_spire.query(JournalEntryTag).filter(
+                        JournalEntryTag.journal_entry_id.in_(
+                            [entry.id for entry in entries_query]
+                        ),
+                        JournalEntryTag.tag.in_(c_val),
+                    )
+                    entries_query = entries_query.filter(
+                        JournalEntry.id.in_(
+                            [tag.journal_entry_id for tag in tags_query]
+                        )
+                    )
+                    logger.info(f"- Added condition tags for rule {rule.id}")
+
+            if rule.action == RuleActions.remove.value:
+                try:
+                    entries_to_drop_num = entries_query.delete(
+                        synchronize_session=False
+                    )
+                    db_session_spire.commit()
+                    logger.info(
+                        f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
+                    )
+                except Exception as err:
+                    logger.error(
+                        f"Unable to drop entries for rule {rule.id}, error: {str(err)}"
+                    )
+                    db_session_spire.rollback()
+    finally:
+        db_session_spire.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Command Line Interface for Bugout drones"
     )
     parser.set_defaults(func=lambda _: parser.print_help())
     subcommands = parser.add_subparsers(description="Drones commands")
+
     # Reports parser
     parser_reports = subcommands.add_parser("reports", description="Drone reports")
     parser_reports.set_defaults(func=lambda _: parser_reports.print_help())
@@ -364,6 +434,22 @@ def main() -> None:
         help=f"Redis command for extracting data from queue.",
     )
     pick_command.set_defaults(func=pick_reports_from_redis)
+
+    # Journal ttl rules parser
+    parser_rules = subcommands.add_parser(
+        "rules", description="Drone journal ttl rules"
+    )
+    parser_rules.set_defaults(func=lambda _: parser_rules.print_help())
+    subcommands_rules = parser_rules.add_subparsers(
+        description="Drone journal ttl rules commands"
+    )
+    parser_rules_execute = subcommands_rules.add_parser(
+        "execute", description="Execute ttl rule to journal"
+    )
+
+    parser_rules_execute.add_argument("-i", "--id", help="Rule ID")
+    parser_rules_execute.set_defaults(func=journal_rules_execute_handler)
+
     args = parser.parse_args()
     args.func(args)
 
