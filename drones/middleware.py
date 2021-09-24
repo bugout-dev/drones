@@ -22,6 +22,8 @@ class DronesAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ):
+        if BUGOUT_DRONES_TOKEN_HEADER is None:
+            return Response(status_code=500, content="Internal server error")
         drones_token = request.headers.get(BUGOUT_DRONES_TOKEN_HEADER)
         if drones_token is None:
             return Response(

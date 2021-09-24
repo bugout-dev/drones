@@ -10,9 +10,8 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+
 from . import statistics
-
-
 from .data import StatsTypes, TimeScales, UpdateStatsResponce, UpdateStatsRequest
 from .middleware import DronesAuthMiddleware
 from .settings import (

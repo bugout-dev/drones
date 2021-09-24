@@ -1,25 +1,17 @@
 import json
-from os import error
 import time
+from typing import Dict, List
 
 from redis import Redis
-from typing import Dict, Optional, List
-
-from .data import HumbugCreateReportTask, HumbugFiledReportTask
-import redis
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
+from spire.humbug.data import HumbugCreateReportTask
 from sqlalchemy.orm.session import Session
 from sqlalchemy.orm import aliased
-from .db import yield_redis_connection_from_env_ctx
+from spire.db import redis_connection
 
-
-from .settings import (
-    REPORTS_CHUNK_SIZE,
-    WAITING_UNTIL_NEW_REPORTS,
-    REDIS_REPORTS_QUEUE,
-    REDIS_FAILED_REPORTS_QUEUE,
-)
+from .data import HumbugFailedReportTask
+from .settings import REDIS_FAILED_REPORTS_QUEUE
 
 
 def upload_report_tasks(
@@ -28,7 +20,7 @@ def upload_report_tasks(
 
     """
     Return parsed reports from redis
-
+    
     """
     if command == "lrange":
         reports_json = redis_client.execute_command(
@@ -36,16 +28,18 @@ def upload_report_tasks(
         )
     else:
         reports_json = redis_client.execute_command(command, queue_key, chunk_size)
+    print(
+        f"Redis command {command} results count: {len(reports_json) if reports_json else 0}"
+    )
     try:
         if reports_json is not None:
-            # parse reports object
             return [
                 HumbugCreateReportTask(**json.loads(report)) for report in reports_json
             ]
     except Exception as err:
+        print(f"Error in parsing reports proccess: {err}")
         redis_client.rpush(
-            REDIS_FAILED_REPORTS_QUEUE,
-            *reports_json,
+            REDIS_FAILED_REPORTS_QUEUE, *reports_json,
         )
 
 
@@ -94,7 +88,7 @@ def write_reports(
     """
     Push all reports to database in one chunk
     """
-
+    pushed = 0
     for report_task in report_tasks:
         try:
 
@@ -107,32 +101,35 @@ def write_reports(
                 content=report_task.report.content,
                 context_id=str(report_task.bugout_token),
                 context_type="humbug",
+                created_at=report_task.report.created_at,
+                updated_at=report_task.report.created_at,
             )
-
-            report_task.report.tags.append(
-                f"reporter_token:{str(report_task.bugout_token)}"
-            )
+            tags = report_task.report.tags[:]
+            tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
             entry_object.tags.extend(
                 [
                     journal_models.JournalEntryTag(tag=tag)
-                    for tag in report_task.report.tags
+                    for tag in list(set(tags))
                     if tag
                 ]
             )
-
             db_session.add(entry_object)
             db_session.commit()
+            pushed += 1
         except Exception as err:
+            print(f"Error in writing reports to datbase: {err}")
             redis_client.rpush(
                 REDIS_FAILED_REPORTS_QUEUE,
-                HumbugFiledReportTask(
+                HumbugFailedReportTask(
                     bugout_token=report_task.bugout_token,
                     report=report_task.report,
                     error=str(err),
                 ).json(),
             )
+
             db_session.rollback()
+    return pushed
 
 
 def process_humbug_tasks_queue(
@@ -143,57 +140,68 @@ def process_humbug_tasks_queue(
     block: bool,
     timeout: int,
 ):
-    with yield_redis_connection_from_env_ctx() as redis_client:
-        print("Polling reports queue start")
-        while True:
-            # logic of get all new reports
-            try:
 
-                report_tasks = upload_report_tasks(
-                    redis_client=redis_client,
-                    queue_key=queue_key,
-                    command=upload_command,
-                    chunk_size=chunk_size,
-                )
+    print("Polling reports queue start")
+    print(f"Redis is connected:{redis_connection().execute_command('PING')}")
+    while True:
 
-                if not report_tasks:
-                    if block:
-                        time.sleep(timeout)
-                        continue
-                    else:
-                        return
+        try:
+            redis_client = redis_connection()
+            # get all new reports
+            report_tasks = upload_report_tasks(
+                redis_client=redis_client,
+                queue_key=queue_key,
+                command=upload_command,
+                chunk_size=chunk_size,
+            )
 
-                # fetching pairs of journal ids and tokens
-                journal_by_token = get_humbug_integrations(
-                    db_session=db_session, report_tasks=report_tasks
-                )
+            if not report_tasks:
+                if block:
+                    time.sleep(timeout)
+                    continue
+                else:
+                    return
 
-                write_reports(
-                    db_session=db_session,
-                    redis_client=redis_client,
-                    report_tasks=report_tasks,
-                    journal_by_token=journal_by_token,
-                )
-                print(f"{len(report_tasks)} pushed to database")
+            # fetching pairs of journal ids and tokens
 
-            except Exception as err:
-                print(err)
+            journal_by_token = get_humbug_integrations(
+                db_session=db_session, report_tasks=report_tasks
+            )
+
+            written_count = write_reports(
+                db_session=db_session,
+                redis_client=redis_client,
+                report_tasks=report_tasks,
+                journal_by_token=journal_by_token,
+            )
+            print(f"{written_count} pushed to database")
+
+        except Exception as err:
+            print(err)
+            if report_tasks:
+                for tasks in report_tasks:
+                    redis_client.rpush(
+                        REDIS_FAILED_REPORTS_QUEUE,
+                        HumbugFailedReportTask(
+                            bugout_token=tasks.bugout_token,
+                            report=tasks.report,
+                            error=str(err),
+                        ).json(),
+                    )
 
 
 def pick_humbug_tasks_queue(
-    queue_key: str,
-    command: str,
-    chunk_size: int,
-    start: int,
+    queue_key: str, command: str, chunk_size: int, start: int,
 ):
 
-    with yield_redis_connection_from_env_ctx() as redis_client:
-        if command == "lrange":
-            reports_json = redis_client.execute_command(
-                command, queue_key, start, chunk_size - 1
-            )
-        else:
-            reports_json = redis_client.execute_command(command, queue_key, chunk_size)
-        if reports_json:
-            for i in reports_json:
-                print(reports_json)
+    redis_client = redis_connection()
+
+    if command == "lrange":
+        reports_json = redis_client.execute_command(
+            command, queue_key, start, chunk_size - 1
+        )
+    else:
+        reports_json = redis_client.execute_command(command, queue_key, chunk_size)
+    if reports_json:
+        for i in reports_json:
+            print(reports_json)

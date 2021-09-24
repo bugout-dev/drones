@@ -1,10 +1,11 @@
 from datetime import datetime
 from enum import Enum
-from os import error
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from spire.humbug.data import HumbugReport
 
 
 class StatsTypes(Enum):
@@ -59,19 +60,7 @@ class UpdateStatsResponce(BaseModel):
     journal_statistics: Optional[List[Dict[str, Any]]] = None
 
 
-# TODO(andrey) use models from spire.
-class HumbugReport(BaseModel):
-    title: str
-    content: str
-    tags: List[str] = Field(default_factory=list)
-
-
-class HumbugCreateReportTask(BaseModel):
+class HumbugFailedReportTask(BaseModel):
     report: HumbugReport
     bugout_token: UUID
-
-
-class HumbugFiledReportTask(BaseModel):
-    report: HumbugReport
-    bugout_token: UUID
-    error: str
+    error: Optional[str] = None
