@@ -127,7 +127,6 @@ def write_reports(
                 HumbugFailedReportTask(
                     bugout_token=report_task.bugout_token,
                     report=report_task.report,
-                    reported_at=report_task.reported_at,
                     error=str(err),
                 ).json(),
             )
@@ -189,7 +188,6 @@ def process_humbug_tasks_queue(
                         HumbugFailedReportTask(
                             bugout_token=tasks.bugout_token,
                             report=tasks.report,
-                            reported_at=tasks.reported_at,
                             error=str(err),
                         ).json(),
                     )
