@@ -1,11 +1,11 @@
 from datetime import datetime
 from enum import Enum
-from os import error
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from spire.humbug.data import HumbugCreateReportTask, HumbugReport
 
 from pydantic import BaseModel, Field
+
+from spire.humbug.data import HumbugReport
 
 
 class StatsTypes(Enum):

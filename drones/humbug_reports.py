@@ -1,11 +1,8 @@
 import json
-from os import error
 import time
+from typing import Dict, List
 
 from redis import Redis
-from typing import Dict, Optional, List
-
-from .data import HumbugFailedReportTask
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
 from spire.humbug.data import HumbugCreateReportTask
@@ -13,7 +10,7 @@ from sqlalchemy.orm.session import Session
 from sqlalchemy.orm import aliased
 from spire.db import redis_connection
 
-
+from .data import HumbugFailedReportTask
 from .settings import REDIS_FAILED_REPORTS_QUEUE
 
 
