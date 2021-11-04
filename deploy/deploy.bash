@@ -15,6 +15,9 @@ PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
 SERVICE_FILE="${SCRIPT_DIR}/drones.service"
 AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
+# Redis
+REDIS_SERVICE_FILE="${SCRIPT_DIR}/redis.service"
+
 # Drones statistics generator
 DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
 DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
@@ -38,6 +41,22 @@ echo
 echo "Retrieving deployment parameters"
 mkdir -p "${SECRETS_DIR}"
 AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -p "${AWS_SSM_PARAMETER_PATH}" -o "${PARAMETERS_ENV_PATH}"
+
+echo
+echo
+echo -e "${PREFIX_INFO} Updating Redis service"
+if systemctl is-active --quiet "${REDIS_SERVICE_FILE}"
+then
+    echo -e "${PREFIX_WARN} Redis service ${REDIS_SERVICE_FILE} already running"
+else
+    echo -e "${PREFIX_INFO} Restart Redis service ${REDIS_SERVICE_FILE}"
+    chmod 644 "${SCRIPT_DIR}/${REDIS_SERVICE_FILE}"
+    cp "${SCRIPT_DIR}/${REDIS_SERVICE_FILE}" "/etc/systemd/system/${REDIS_SERVICE_FILE}"
+    systemctl daemon-reload
+    systemctl enable "${REDIS_SERVICE_FILE}"
+    systemctl restart "${REDIS_SERVICE_FILE}"
+    sleep 5
+fi
 
 echo
 echo
