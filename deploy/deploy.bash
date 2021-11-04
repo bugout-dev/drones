@@ -45,7 +45,7 @@ set -eu
 echo
 echo
 echo "Updating Python dependencies"
-sudo -u ubuntu "${PIP}" install -r "${APP_DIR}/requirements.txt"
+sudo -u ubuntu "${PIP}" install --exists-action i -r "${APP_DIR}/requirements.txt"
 
 echo
 echo
