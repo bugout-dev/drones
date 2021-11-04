@@ -2,6 +2,17 @@
 
 # Deployment script - intended to run on Drones servers
 
+# Colors
+C_RESET='\033[0m'
+C_RED='\033[1;31m'
+C_GREEN='\033[1;32m'
+C_YELLOW='\033[1;33m'
+
+# Logs
+PREFIX_INFO="${C_GREEN}[INFO]${C_RESET} [$(date +%d-%m\ %T)]"
+PREFIX_WARN="${C_YELLOW}[WARN]${C_RESET} [$(date +%d-%m\ %T)]"
+PREFIX_CRIT="${C_RED}[CRIT]${C_RESET} [$(date +%d-%m\ %T)]"
+
 # Main
 APP_DIR="${APP_DIR:-/home/ubuntu/drones}"
 AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
@@ -16,7 +27,7 @@ SERVICE_FILE="${SCRIPT_DIR}/drones.service"
 AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
 # Redis
-REDIS_SERVICE_FILE="${SCRIPT_DIR}/redis.service"
+REDIS_SERVICE_FILE="redis.service"
 
 # Drones statistics generator
 DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
@@ -34,7 +45,7 @@ set -eu
 echo
 echo
 echo "Updating Python dependencies"
-sudo -u ubuntu "${PIP}" install -r "${APP_DIR}/requirements.txt"
+sudo -u ubuntu "${PIP}" install --exists-action i -r "${APP_DIR}/requirements.txt"
 
 echo
 echo
