@@ -111,7 +111,7 @@ def write_reports(
                 [
                     journal_models.JournalEntryTag(tag=tag)
                     for tag in list(set(tags))
-                    if tag
+                    if tag and len(tag) <= 1024
                 ]
             )
             db_session.add(entry_object)
@@ -188,6 +188,7 @@ def process_humbug_tasks_queue(
                             error=str(err),
                         ).json(),
                     )
+            db_session.rollback()
 
 
 def pick_humbug_tasks_queue(
