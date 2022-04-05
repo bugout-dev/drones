@@ -3,6 +3,7 @@ import time
 from typing import Dict, List
 
 from redis import Redis
+from drones.settings import HUMBUG_REPORTS_MAX_TAG_LENGTH, HUMBUG_REPORTS_MAX_TAGS_SIZE
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
 from spire.humbug.data import HumbugCreateReportTask
@@ -107,9 +108,21 @@ def write_reports(
             tags = report_task.report.tags[:]
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
+            if len("".join(tags)) > HUMBUG_REPORTS_MAX_TAGS_SIZE:
+                
+                redis_client.rpush(
+                    REDIS_FAILED_REPORTS_QUEUE,
+                    HumbugFailedReportTask(
+                        bugout_token=report_task.bugout_token,
+                        report=report_task.report,
+                        error="Tags size is too big",
+                    ).json(),
+                )
+                continue
+
 
             for tag in [tag for tag in list(set(tags)) if tag]:
-                if len(tag) > MAX_TAG_LENGTH:
+                if len(tag) > HUMBUG_REPORTS_MAX_TAG_LENGTH:
 
                     redis_client.rpush(
                         REDIS_FAILED_REPORTS_QUEUE,
