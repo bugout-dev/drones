@@ -11,7 +11,7 @@ from sqlalchemy.orm import aliased
 from spire.db import redis_connection
 
 from .data import HumbugFailedReportTask
-from .settings import REDIS_FAILED_REPORTS_QUEUE
+from .settings import REDIS_FAILED_REPORTS_QUEUE, MAX_TAG_LENGTH
 
 
 def upload_report_tasks(
@@ -107,13 +107,24 @@ def write_reports(
             tags = report_task.report.tags[:]
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
-            entry_object.tags.extend(
-                [
-                    journal_models.JournalEntryTag(tag=tag)
-                    for tag in list(set(tags))
-                    if tag and len(tag) <= 1024
-                ]
-            )
+
+            for tag in [tag for tag in list(set(tags)) if tag]:
+                if len(tag) > MAX_TAG_LENGTH:
+
+                    redis_client.rpush(
+                        REDIS_FAILED_REPORTS_QUEUE,
+                        HumbugFailedReportTask(
+                            bugout_token=report_task.bugout_token,
+                            report=report_task.report,
+                            error="Too long tag",
+                        ).json(),
+                    )
+                    continue
+                    
+                entry_object.tags.append(
+                    journal_models.JournalTag(tag=tag)
+                )
+            
             db_session.add(entry_object)
             db_session.commit()
             pushed += 1

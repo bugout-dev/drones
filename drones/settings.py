@@ -1,5 +1,7 @@
 import os
 
+MAX_TAG_LENGTH = 256
+
 BUGOUT_DRONES_TOKEN = os.environ.get("BUGOUT_DRONES_TOKEN")
 if BUGOUT_DRONES_TOKEN is None or BUGOUT_DRONES_TOKEN == "":
     raise ValueError("BUGOUT_DRONES_TOKEN environment variable must be set")
