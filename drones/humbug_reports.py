@@ -3,6 +3,7 @@ import time
 from typing import Dict, List
 
 from redis import Redis
+from drones.settings import HUMBUG_REPORTS_MAX_TAG_LENGTH, HUMBUG_REPORTS_MAX_TAGS_SIZE
 from spire.journal import models as journal_models
 from spire.humbug import models as humbug_models
 from spire.humbug.data import HumbugCreateReportTask
@@ -11,7 +12,7 @@ from sqlalchemy.orm import aliased
 from spire.db import redis_connection
 
 from .data import HumbugFailedReportTask
-from .settings import REDIS_FAILED_REPORTS_QUEUE
+from .settings import REDIS_FAILED_REPORTS_QUEUE, MAX_TAG_LENGTH
 
 
 def upload_report_tasks(
@@ -107,13 +108,36 @@ def write_reports(
             tags = report_task.report.tags[:]
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
-            entry_object.tags.extend(
-                [
-                    journal_models.JournalEntryTag(tag=tag)
-                    for tag in list(set(tags))
-                    if tag
-                ]
-            )
+            if len("".join(tags)) > HUMBUG_REPORTS_MAX_TAGS_SIZE:
+                
+                redis_client.rpush(
+                    REDIS_FAILED_REPORTS_QUEUE,
+                    HumbugFailedReportTask(
+                        bugout_token=report_task.bugout_token,
+                        report=report_task.report,
+                        error="Tags size is too big",
+                    ).json(),
+                )
+                continue
+
+
+            for tag in [tag for tag in list(set(tags)) if tag]:
+                if len(tag) > HUMBUG_REPORTS_MAX_TAG_LENGTH:
+
+                    redis_client.rpush(
+                        REDIS_FAILED_REPORTS_QUEUE,
+                        HumbugFailedReportTask(
+                            bugout_token=report_task.bugout_token,
+                            report=report_task.report,
+                            error="Too long tag",
+                        ).json(),
+                    )
+                    continue
+                    
+                entry_object.tags.append(
+                    journal_models.JournalTag(tag=tag)
+                )
+            
             db_session.add(entry_object)
             db_session.commit()
             pushed += 1
@@ -188,6 +212,7 @@ def process_humbug_tasks_queue(
                             error=str(err),
                         ).json(),
                     )
+            db_session.rollback()
 
 
 def pick_humbug_tasks_queue(
