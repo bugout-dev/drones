@@ -213,7 +213,7 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
     """
     Process ttl rules for journal entries.
 
-    ttl - (drop or another action from rule) entries with timestamp less then current datetime minus 
+    ttl - (drop or another action from rule) entries with timestamp less then current datetime minus
     value from rule in seconds.
     tags - (drop or another action from rule) entries which contains tags in rule
     """
@@ -228,11 +228,17 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
 
         for rule in rules_query:
             logger.info(
-                f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}"
+                f"Executing rule {str(rule.id)} for journal{f' {str(rule.journal_id)}' if rule.journal_id is not None else 's'}"
             )
-            entries_query = db_session_spire.query(JournalEntry).filter(
-                JournalEntry.journal_id == rule.journal_id
-            )
+
+            entries_query = db_session_spire.query(JournalEntry)
+            if rule.journal_id is not None:
+                entries_query = entries_query.filter(
+                    JournalEntry.journal_id == rule.journal_id
+                )
+
+            if rule.action == RuleActions.unlock.value:
+                entries_query = entries_query.filter(JournalEntry.locked_by.isnot(None))
 
             for c_key, c_val in rule.conditions.items():
                 if c_key == "ttl":
@@ -270,6 +276,21 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
                         f"Unable to drop entries for rule {rule.id}, error: {str(err)}"
                     )
                     db_session_spire.rollback()
+            elif rule.action == RuleActions.unlock.value:
+                try:
+                    entries_to_unlock_num = entries_query.update(
+                        {JournalEntry.locked_by: None}
+                    )
+                    db_session_spire.commit()
+                    logger.info(
+                        f"Unlocked {entries_to_unlock_num} entries with rule {rule.id}"
+                    )
+                except Exception as err:
+                    logger.error(
+                        f"Unable to unlock entries for rule {rule.id}, error: {str(err)}"
+                    )
+                    db_session_spire.rollback()
+
     finally:
         db_session_spire.close()
 
@@ -291,7 +312,9 @@ def main() -> None:
         "generate", description="Generate reports for Humbug integration"
     )
     parser_reports_generate.add_argument(
-        "-i", "--id", help="Humbug integration id",
+        "-i",
+        "--id",
+        help="Humbug integration id",
     )
     parser_reports_generate.add_argument(
         "-s",
@@ -333,10 +356,14 @@ def main() -> None:
         "migrate", description="Upgrade across database"
     )
     parser_migrate.add_argument(
-        "migration", choices=MIGRATIONS, help="Which migration to run",
+        "migration",
+        choices=MIGRATIONS,
+        help="Which migration to run",
     )
     parser_migrate.add_argument(
-        "action", choices=ACTIONS, help="Whether to run upgrade or downgrade",
+        "action",
+        choices=ACTIONS,
+        help="Whether to run upgrade or downgrade",
     )
     parser_migrate.add_argument(
         "-j",
