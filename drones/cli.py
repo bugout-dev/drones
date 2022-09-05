@@ -10,7 +10,12 @@ from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
 from spire.journal.data import RuleActions
-from spire.journal.models import JournalEntry, JournalEntryTag, JournalTTL
+from spire.journal.models import (
+    JournalEntry,
+    JournalEntryLock,
+    JournalEntryTag,
+    JournalTTL,
+)
 
 from .data import (
     StatsTypes,
@@ -228,66 +233,65 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
 
         for rule in rules_query:
             logger.info(
-                f"Executing rule {str(rule.id)} for journal{f' {str(rule.journal_id)}' if rule.journal_id is not None else 's'}"
+                f"Executing {rule.action} rule {str(rule.id)} '{rule.name}' for journal{f' {str(rule.journal_id)}' if rule.journal_id is not None else 's'}"
             )
 
-            entries_query = db_session_spire.query(JournalEntry)
-            if rule.journal_id is not None:
-                entries_query = entries_query.filter(
+            conditions_applied = False
+            if rule.action == RuleActions.remove.value:
+                query = db_session_spire.query(JournalEntry).filter(
                     JournalEntry.journal_id == rule.journal_id
                 )
-
-            if rule.action == RuleActions.unlock.value:
-                entries_query = entries_query.filter(JournalEntry.locked_by.isnot(None))
-
-            for c_key, c_val in rule.conditions.items():
-                if c_key == "ttl":
-                    entries_query = entries_query.filter(
-                        JournalEntry.updated_at
-                        < (current_timestamp - timedelta(seconds=c_val))
-                    )
-                    logger.info(f"- Added condition ttl for rule {rule.id}")
-                if c_key == "tags":
-                    # For entries with tags in rule conditions
-                    tags_query = db_session_spire.query(JournalEntryTag).filter(
-                        JournalEntryTag.journal_entry_id.in_(
-                            [entry.id for entry in entries_query]
-                        ),
-                        JournalEntryTag.tag.in_(c_val),
-                    )
-                    entries_query = entries_query.filter(
-                        JournalEntry.id.in_(
-                            [tag.journal_entry_id for tag in tags_query]
+                for c_key, c_val in rule.conditions.items():
+                    if c_key == "ttl":
+                        query = query.filter(
+                            JournalEntry.updated_at
+                            < (current_timestamp - timedelta(seconds=c_val))
                         )
-                    )
-                    logger.info(f"- Added condition tags for rule {rule.id}")
-
-            if rule.action == RuleActions.remove.value:
-                try:
-                    entries_to_drop_num = entries_query.delete(
-                        synchronize_session=False
-                    )
-                    db_session_spire.commit()
-                    logger.info(
-                        f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
-                    )
-                except Exception as err:
-                    logger.error(
-                        f"Unable to drop entries for rule {rule.id}, error: {str(err)}"
-                    )
-                    db_session_spire.rollback()
+                        conditions_applied = True
+                        logger.info(f"- Added condition ttl for rule {rule.id}")
+                    elif c_key == "tags":
+                        # For entries with tags in rule conditions
+                        tags_query = db_session_spire.query(JournalEntryTag).filter(
+                            JournalEntryTag.journal_entry_id.in_(
+                                [entry.id for entry in query]
+                            ),
+                            JournalEntryTag.tag.in_(c_val),
+                        )
+                        query = query.filter(
+                            JournalEntry.id.in_(
+                                [tag.journal_entry_id for tag in tags_query]
+                            )
+                        )
+                        conditions_applied = True
+                        logger.info(f"- Added condition tags for rule {rule.id}")
+                    else:
+                        logger.error(f"- Unsupported condition {c_key}")
+                        continue
             elif rule.action == RuleActions.unlock.value:
+                query = db_session_spire.query(JournalEntryLock)
+                for c_key, c_val in rule.conditions.items():
+                    if c_key == "ttl":
+                        query = query.filter(
+                            JournalEntryLock.locked_at
+                            < (current_timestamp - timedelta(seconds=c_val))
+                        )
+                        conditions_applied = True
+                        logger.info(f"- Added condition ttl for rule {rule.id}")
+                    else:
+                        logger.error(f"- Unsupported condition {c_key}")
+                        continue
+            else:
+                logger.error("Incorrect rule action")
+                continue
+
+            if conditions_applied:
                 try:
-                    entries_to_unlock_num = entries_query.update(
-                        {JournalEntry.locked_by: None}
-                    )
+                    objects_to_drop_num = query.delete(synchronize_session=False)
                     db_session_spire.commit()
-                    logger.info(
-                        f"Unlocked {entries_to_unlock_num} entries with rule {rule.id}"
-                    )
+                    logger.info(f"Dropped {objects_to_drop_num} objects")
                 except Exception as err:
                     logger.error(
-                        f"Unable to unlock entries for rule {rule.id}, error: {str(err)}"
+                        f"Unable to drop objects for rule {rule.id}, error: {str(err)}"
                     )
                     db_session_spire.rollback()
 
