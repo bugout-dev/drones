@@ -238,6 +238,10 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
 
             conditions_applied = False
             if rule.action == RuleActions.remove.value:
+                if rule.journal_id is None:
+                    # Remove this is statement to support cleaning over all journals. Dangerous.
+                    logger.waring("Cleaning over all journals restricted")
+                    continue
                 query = db_session_spire.query(JournalEntry).filter(
                     JournalEntry.journal_id == rule.journal_id
                 )
@@ -294,7 +298,8 @@ def journal_rules_execute_handler(args: argparse.Namespace) -> None:
                         f"Unable to drop objects for rule {rule.id}, error: {str(err)}"
                     )
                     db_session_spire.rollback()
-
+            else:
+                logger.error("There are no applied conditions")
     finally:
         db_session_spire.close()
 
