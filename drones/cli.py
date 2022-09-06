@@ -9,8 +9,7 @@ import time
 from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
-from spire.journal.data import RuleActions
-from spire.journal.models import JournalEntry, JournalEntryTag, JournalTTL
+from spire.journal.models import JournalEntryLock
 
 from .data import (
     StatsTypes,
@@ -209,67 +208,23 @@ def migration_handler(args: argparse.Namespace):
     action(args.journal, args.debug)
 
 
-def journal_rules_execute_handler(args: argparse.Namespace) -> None:
+def journal_rules_unlock_handler(args: argparse.Namespace) -> None:
     """
-    Process ttl rules for journal entries.
-
-    ttl - (drop or another action from rule) entries with timestamp less then current datetime minus 
-    value from rule in seconds.
-    tags - (drop or another action from rule) entries which contains tags in rule
+    Removes locks from entries.
     """
     current_timestamp = datetime.now()
     db_session_spire = session_local_spire()
     try:
-        rules_query = db_session_spire.query(JournalTTL).filter(
-            JournalTTL.active == True
+        query = db_session_spire.query(JournalEntryLock).filter(
+            JournalEntryLock.locked_at
+            < (current_timestamp - timedelta(seconds=args.ttl))
         )
-        if args.id is not None:
-            rules_query = rules_query.filter(JournalTTL.id == args.id)
-
-        for rule in rules_query:
-            logger.info(
-                f"Executing rule {str(rule.id)} for journal {str(rule.journal_id)}"
-            )
-            entries_query = db_session_spire.query(JournalEntry).filter(
-                JournalEntry.journal_id == rule.journal_id
-            )
-
-            for c_key, c_val in rule.conditions.items():
-                if c_key == "ttl":
-                    entries_query = entries_query.filter(
-                        JournalEntry.updated_at
-                        < (current_timestamp - timedelta(seconds=c_val))
-                    )
-                    logger.info(f"- Added condition ttl for rule {rule.id}")
-                if c_key == "tags":
-                    # For entries with tags in rule conditions
-                    tags_query = db_session_spire.query(JournalEntryTag).filter(
-                        JournalEntryTag.journal_entry_id.in_(
-                            [entry.id for entry in entries_query]
-                        ),
-                        JournalEntryTag.tag.in_(c_val),
-                    )
-                    entries_query = entries_query.filter(
-                        JournalEntry.id.in_(
-                            [tag.journal_entry_id for tag in tags_query]
-                        )
-                    )
-                    logger.info(f"- Added condition tags for rule {rule.id}")
-
-            if rule.action == RuleActions.remove.value:
-                try:
-                    entries_to_drop_num = entries_query.delete(
-                        synchronize_session=False
-                    )
-                    db_session_spire.commit()
-                    logger.info(
-                        f"Dropped {entries_to_drop_num} for journal with id: {rule.journal_id}"
-                    )
-                except Exception as err:
-                    logger.error(
-                        f"Unable to drop entries for rule {rule.id}, error: {str(err)}"
-                    )
-                    db_session_spire.rollback()
+        objects_to_drop_num = query.delete(synchronize_session=False)
+        db_session_spire.commit()
+        logger.info(f"Dropped {objects_to_drop_num} locks")
+    except Exception as err:
+        logger.error(f"Unable to drop locks, error: {str(err)}")
+        db_session_spire.rollback()
     finally:
         db_session_spire.close()
 
@@ -291,7 +246,9 @@ def main() -> None:
         "generate", description="Generate reports for Humbug integration"
     )
     parser_reports_generate.add_argument(
-        "-i", "--id", help="Humbug integration id",
+        "-i",
+        "--id",
+        help="Humbug integration id",
     )
     parser_reports_generate.add_argument(
         "-s",
@@ -333,10 +290,14 @@ def main() -> None:
         "migrate", description="Upgrade across database"
     )
     parser_migrate.add_argument(
-        "migration", choices=MIGRATIONS, help="Which migration to run",
+        "migration",
+        choices=MIGRATIONS,
+        help="Which migration to run",
     )
     parser_migrate.add_argument(
-        "action", choices=ACTIONS, help="Whether to run upgrade or downgrade",
+        "action",
+        choices=ACTIONS,
+        help="Whether to run upgrade or downgrade",
     )
     parser_migrate.add_argument(
         "-j",
@@ -443,12 +404,17 @@ def main() -> None:
     subcommands_rules = parser_rules.add_subparsers(
         description="Drone journal ttl rules commands"
     )
-    parser_rules_execute = subcommands_rules.add_parser(
-        "execute", description="Execute ttl rule to journal"
+    parser_rules_unlock = subcommands_rules.add_parser(
+        "unlock", description="Drops locks of entries"
     )
-
-    parser_rules_execute.add_argument("-i", "--id", help="Rule ID")
-    parser_rules_execute.set_defaults(func=journal_rules_execute_handler)
+    parser_rules_unlock.add_argument(
+        "-t",
+        "--ttl",
+        type=int,
+        default=300,
+        help="Drop locks not earlier than the specified value in seconds",
+    )
+    parser_rules_unlock.set_defaults(func=journal_rules_unlock_handler)
 
     args = parser.parse_args()
     args.func(args)

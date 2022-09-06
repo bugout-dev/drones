@@ -1,5 +1,5 @@
 [Unit]
-Description=Execute journal rules
+Description=Clean journal entry locks
 After=network.target
 
 [Service]
@@ -8,5 +8,5 @@ User=ubuntu
 Group=www-data
 WorkingDirectory=/home/ubuntu/drones
 EnvironmentFile=/home/ubuntu/drones-secrets/app.env
-ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli rules execute
-SyslogIdentifier=dronesjournalttlrules
+ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli rules unlock --ttl 300
+SyslogIdentifier=drones-rule-unlock

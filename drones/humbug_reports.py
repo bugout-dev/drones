@@ -114,11 +114,11 @@ def write_reports(
                 if len(tag) > HUMBUG_REPORTS_MAX_TAG_LENGTH:
                     tags_removed += 1
                     continue
-                entry_object.tags.append(journal_models.JournalTag(tag=tag))
+                entry_object.tags.append(journal_models.JournalEntryTag(tag=tag))
 
             if tags_removed > 0:
                 entry_object.tags.append(
-                    journal_models.JournalTag(tag=f"tags_removed:{tags_removed}")
+                    journal_models.JournalEntryTag(tag=f"tags_removed:{tags_removed}")
                 )
 
             db_session.add(entry_object)

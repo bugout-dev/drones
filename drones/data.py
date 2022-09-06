@@ -47,7 +47,7 @@ class UpdateStatsRequest(BaseModel):
     stats_version: int
     stats_type: List[str] = []
     timescale: List[str] = []
-    push_to_bucket: Optional[bool] = True
+    push_to_bucket: bool = True
 
 
 class Jobs(BaseModel):

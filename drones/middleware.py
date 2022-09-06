@@ -31,6 +31,9 @@ class DronesAuthMiddleware(BaseHTTPMiddleware):
             )
 
         if drones_token != BUGOUT_DRONES_TOKEN:
-            return Response(status_code=403, content="Access denied wrong credentials",)
+            return Response(
+                status_code=403,
+                content="Access denied wrong credentials",
+            )
 
         return await call_next(request)
