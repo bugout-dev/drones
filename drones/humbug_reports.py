@@ -11,7 +11,7 @@ from sqlalchemy.orm import aliased
 from spire.db import redis_connection
 
 from .data import HumbugFailedReportTask
-from .settings import REDIS_FAILED_REPORTS_QUEUE
+from .settings import REDIS_FAILED_REPORTS_QUEUE, HUMBUG_REPORTS_MAX_TAG_LENGTH
 
 
 def upload_report_tasks(
@@ -108,13 +108,19 @@ def write_reports(
             tags = report_task.report.tags[:]
             tags.append(f"reporter_token:{str(report_task.bugout_token)}")
 
-            entry_object.tags.extend(
-                [
-                    journal_models.JournalEntryTag(tag=tag)
-                    for tag in list(set(tags))
-                    if tag
-                ]
-            )
+            tags_removed = 0
+
+            for tag in [tag for tag in list(set(tags)) if tag]:
+                if len(tag) > HUMBUG_REPORTS_MAX_TAG_LENGTH:
+                    tags_removed += 1
+                    continue
+                entry_object.tags.append(journal_models.JournalTag(tag=tag))
+
+            if tags_removed > 0:
+                entry_object.tags.append(
+                    journal_models.JournalTag(tag=f"tags_removed:{tags_removed}")
+                )
+
             db_session.add(entry_object)
             db_session.commit()
             pushed += 1
