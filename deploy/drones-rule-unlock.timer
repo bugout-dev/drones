@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean journal entry locks
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=2m
+
+[Install]
+WantedBy=timers.target

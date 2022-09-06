@@ -36,11 +36,16 @@ DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
 # Drones Humbug report loader
 DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
 
-# Drones journal ttl rules
-DRONES_JOURNAL_RULES_SERVICE_FILE="${SCRIPT_DIR}/dronesjournalttlrules.service"
-DRONES_JOURNAL_RULES_TIMER_FILE="${SCRIPT_DIR}/dronesjournalttlrules.timer"
+# Drones journal rules
+DRONES_RULE_UNLOCK_SERVICE_FILE="${SCRIPT_DIR}/drones-rule-unlock.service"
+DRONES_RULE_UNLOCK_TIMER_FILE="${SCRIPT_DIR}/drones-rule-unlock.timer"
 
 set -eu
+
+echo
+echo
+echo -e "${PREFIX_INFO} Upgrading Python pip and setuptools"
+"${PIP}" install --upgrade pip setuptools
 
 echo
 echo
@@ -65,7 +70,7 @@ else
     cp "${SCRIPT_DIR}/${REDIS_SERVICE_FILE}" "/etc/systemd/system/${REDIS_SERVICE_FILE}"
     systemctl daemon-reload
     systemctl enable "${REDIS_SERVICE_FILE}"
-    systemctl restart "${REDIS_SERVICE_FILE}"
+    systemctl restart --no-block "${REDIS_SERVICE_FILE}"
     sleep 5
 fi
 
@@ -75,7 +80,7 @@ echo "Replacing existing Drones service definition with ${SERVICE_FILE}"
 chmod 644 "${SERVICE_FILE}"
 cp "${SERVICE_FILE}" /etc/systemd/system/drones.service
 systemctl daemon-reload
-systemctl restart drones.service
+systemctl restart --no-block drones.service
 systemctl status drones.service
 
 echo
@@ -85,7 +90,7 @@ chmod 644 "${DRONES_STATISTICS_SERVICE_FILE}" "${DRONES_STATISTICS_TIMER_FILE}"
 cp "${DRONES_STATISTICS_SERVICE_FILE}" /etc/systemd/system/dronesstatistics.service
 cp "${DRONES_STATISTICS_TIMER_FILE}" /etc/systemd/system/dronesstatistics.timer
 systemctl daemon-reload
-systemctl restart dronesstatistics.timer
+systemctl restart --no-block dronesstatistics.timer
 
 echo
 echo
@@ -94,13 +99,13 @@ chmod 644 "${DRONES_HUMBUG_REPORT_LOADER_FILE}"
 cp "${DRONES_HUMBUG_REPORT_LOADER_FILE}" /etc/systemd/system/droneshumbugreports.service
 systemctl daemon-reload
 systemctl enable droneshumbugreports.service
-systemctl restart droneshumbugreports.service
+systemctl restart --no-block droneshumbugreports.service
 
 echo
 echo
-echo "Replacing existing Drones journal rules service and timer with: ${DRONES_JOURNAL_RULES_SERVICE_FILE}, ${DRONES_JOURNAL_RULES_TIMER_FILE}"
-chmod 644 "${DRONES_JOURNAL_RULES_SERVICE_FILE}" "${DRONES_JOURNAL_RULES_TIMER_FILE}"
-cp "${DRONES_JOURNAL_RULES_SERVICE_FILE}" /etc/systemd/system/dronesjournalttlrules.service
-cp "${DRONES_JOURNAL_RULES_TIMER_FILE}" /etc/systemd/system/dronesjournalttlrules.timer
+echo "Replacing existing Drones unlock rule service and timer with: ${DRONES_RULE_UNLOCK_SERVICE_FILE}, ${DRONES_RULE_UNLOCK_TIMER_FILE}"
+chmod 644 "${DRONES_RULE_UNLOCK_SERVICE_FILE}" "${DRONES_RULE_UNLOCK_TIMER_FILE}"
+cp "${DRONES_RULE_UNLOCK_SERVICE_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_SERVICE_FILE}"
+cp "${DRONES_RULE_UNLOCK_TIMER_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_TIMER_FILE}"
 systemctl daemon-reload
-systemctl restart dronesjournalttlrules.timer
+systemctl restart --no-block "${DRONES_RULE_UNLOCK_TIMER_FILE}"
