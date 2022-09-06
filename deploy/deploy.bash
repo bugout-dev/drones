@@ -81,7 +81,6 @@ chmod 644 "${SERVICE_FILE}"
 cp "${SERVICE_FILE}" /etc/systemd/system/drones.service
 systemctl daemon-reload
 systemctl restart --no-block drones.service
-systemctl status drones.service
 
 echo
 echo
