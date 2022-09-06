@@ -37,8 +37,8 @@ DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
 DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
 
 # Drones journal rules
-DRONES_RULE_UNLOCK_SERVICE_FILE="${SCRIPT_DIR}/drones-rule-unlock.service"
-DRONES_RULE_UNLOCK_TIMER_FILE="${SCRIPT_DIR}/drones-rule-unlock.timer"
+DRONES_RULE_UNLOCK_SERVICE_FILE="drones-rule-unlock.service"
+DRONES_RULE_UNLOCK_TIMER_FILE="drones-rule-unlock.timer"
 
 set -eu
 
@@ -103,8 +103,8 @@ systemctl restart --no-block droneshumbugreports.service
 echo
 echo
 echo "Replacing existing Drones unlock rule service and timer with: ${DRONES_RULE_UNLOCK_SERVICE_FILE}, ${DRONES_RULE_UNLOCK_TIMER_FILE}"
-chmod 644 "${DRONES_RULE_UNLOCK_SERVICE_FILE}" "${DRONES_RULE_UNLOCK_TIMER_FILE}"
-cp "${DRONES_RULE_UNLOCK_SERVICE_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_SERVICE_FILE}"
-cp "${DRONES_RULE_UNLOCK_TIMER_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_TIMER_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_SERVICE_FILE}" "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_TIMER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_SERVICE_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_TIMER_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_TIMER_FILE}"
 systemctl daemon-reload
 systemctl restart --no-block "${DRONES_RULE_UNLOCK_TIMER_FILE}"
