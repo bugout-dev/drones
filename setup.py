@@ -24,7 +24,7 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Topic :: Software Development :: Libraries",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.8",
     packages=find_packages(),
     package_data={"bugout": ["py.typed"]},
     zip_safe=False,
