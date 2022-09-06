@@ -109,7 +109,11 @@ def generate_tags_time_series(
 
     time_series_subquery = (
         session.query(
-            func.generate_series(start, end, time_step,).label("timeseries_points")
+            func.generate_series(
+                start,
+                end,
+                time_step,
+            ).label("timeseries_points")
         )
     ).subquery(name="time_series_subquery")
 
@@ -165,7 +169,8 @@ def generate_tags_time_series(
 
     tags_counts_subquery = (
         tags_counts.group_by(
-            text("timeseries_points"), journals_models.JournalEntryTag.tag,
+            text("timeseries_points"),
+            journals_models.JournalEntryTag.tag,
         )
         .order_by(text("timeseries_points desc"))
         .subquery(name="tags_counts_subquery")
