@@ -1,9 +1,0 @@
-[Unit]
-Description=Run Humbug statistics generation by Drones every 24 hours
-
-[Timer]
-OnBootSec=10s
-OnUnitActiveSec=24h
-
-[Install]
-WantedBy=timers.target
