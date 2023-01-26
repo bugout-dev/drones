@@ -23,19 +23,14 @@ SCRIPT_DIR="$(realpath $(dirname $0))"
 PARAMETERS_SCRIPT="${SCRIPT_DIR}/parameters.py"
 SECRETS_DIR="${SECRETS_DIR:-/home/ubuntu/drones-secrets}"
 PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
-SERVICE_FILE="${SCRIPT_DIR}/drones.service"
 AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
-# Redis
-REDIS_SERVICE_FILE="redis.service"
-
+DRONES_SERVICE_FILE="drones.service"
 # Drones statistics generator
-DRONES_STATISTICS_SERVICE_FILE="${SCRIPT_DIR}/dronesstatistics.service"
-DRONES_STATISTICS_TIMER_FILE="${SCRIPT_DIR}/dronesstatistics.timer"
-
+DRONES_STATISTICS_SERVICE_FILE="drones-statistics.service"
+DRONES_STATISTICS_TIMER_FILE="drones-statistics.timer"
 # Drones Humbug report loader
-DRONES_HUMBUG_REPORT_LOADER_FILE="${SCRIPT_DIR}/droneshumbugreports.service"
-
+DRONES_HUMBUG_REPORT_LOADER_FILE="drones-humbug-reports.service"
 # Drones journal rules
 DRONES_RULE_UNLOCK_SERVICE_FILE="drones-rule-unlock.service"
 DRONES_RULE_UNLOCK_TIMER_FILE="drones-rule-unlock.timer"
@@ -50,61 +45,44 @@ echo -e "${PREFIX_INFO} Upgrading Python pip and setuptools"
 echo
 echo
 echo "Updating Python dependencies"
-sudo -u ubuntu "${PIP}" install --exists-action i -r "${APP_DIR}/requirements.txt"
+"${PIP}" install --exists-action i -r "${APP_DIR}/requirements.txt"
 
 echo
 echo
-echo "Retrieving deployment parameters"
+echo -e "${PREFIX_INFO} Retrieving deployment parameters"
 mkdir -p "${SECRETS_DIR}"
 AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -p "${AWS_SSM_PARAMETER_PATH}" -o "${PARAMETERS_ENV_PATH}"
 
 echo
 echo
-echo -e "${PREFIX_INFO} Updating Redis service"
-if systemctl is-active --quiet "${REDIS_SERVICE_FILE}"
-then
-    echo -e "${PREFIX_WARN} Redis service ${REDIS_SERVICE_FILE} already running"
-else
-    echo -e "${PREFIX_INFO} Restart Redis service ${REDIS_SERVICE_FILE}"
-    chmod 644 "${SCRIPT_DIR}/${REDIS_SERVICE_FILE}"
-    cp "${SCRIPT_DIR}/${REDIS_SERVICE_FILE}" "/etc/systemd/system/${REDIS_SERVICE_FILE}"
-    systemctl daemon-reload
-    systemctl enable "${REDIS_SERVICE_FILE}"
-    systemctl restart --no-block "${REDIS_SERVICE_FILE}"
-    sleep 5
-fi
+echo -e "${PREFIX_INFO} Replacing existing Drones service definition with ${DRONES_SERVICE_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_SERVICE_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_SERVICE_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_SERVICE_FILE}"
 
 echo
 echo
-echo "Replacing existing Drones service definition with ${SERVICE_FILE}"
-chmod 644 "${SERVICE_FILE}"
-cp "${SERVICE_FILE}" /etc/systemd/system/drones.service
-systemctl daemon-reload
-systemctl restart --no-block drones.service
+echo -e "${PREFIX_INFO} Replacing existing Drones Statistics generation service and timer with: ${DRONES_STATISTICS_SERVICE_FILE}, ${DRONES_STATISTICS_TIMER_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_STATISTICS_SERVICE_FILE}" "${SCRIPT_DIR}/${DRONES_STATISTICS_TIMER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_STATISTICS_SERVICE_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_STATISTICS_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_STATISTICS_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_STATISTICS_TIMER_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_STATISTICS_TIMER_FILE}"
 
 echo
 echo
-echo "Replacing existing Drones Statistics generation service and timer with: ${DRONES_STATISTICS_SERVICE_FILE}, ${DRONES_STATISTICS_TIMER_FILE}"
-chmod 644 "${DRONES_STATISTICS_SERVICE_FILE}" "${DRONES_STATISTICS_TIMER_FILE}"
-cp "${DRONES_STATISTICS_SERVICE_FILE}" /etc/systemd/system/dronesstatistics.service
-cp "${DRONES_STATISTICS_TIMER_FILE}" /etc/systemd/system/dronesstatistics.timer
-systemctl daemon-reload
-systemctl restart --no-block dronesstatistics.timer
+echo -e "${PREFIX_INFO} Replacing existing humbug report loader service definition with ${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_HUMBUG_REPORT_LOADER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_HUMBUG_REPORT_LOADER_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_HUMBUG_REPORT_LOADER_FILE}"
 
 echo
 echo
-echo "Replacing existing humbug report loader service definition with ${DRONES_HUMBUG_REPORT_LOADER_FILE}"
-chmod 644 "${DRONES_HUMBUG_REPORT_LOADER_FILE}"
-cp "${DRONES_HUMBUG_REPORT_LOADER_FILE}" /etc/systemd/system/droneshumbugreports.service
-systemctl daemon-reload
-systemctl enable droneshumbugreports.service
-systemctl restart --no-block droneshumbugreports.service
-
-echo
-echo
-echo "Replacing existing Drones unlock rule service and timer with: ${DRONES_RULE_UNLOCK_SERVICE_FILE}, ${DRONES_RULE_UNLOCK_TIMER_FILE}"
+echo -e "${PREFIX_INFO} Replacing existing Drones unlock rule service and timer with: ${DRONES_RULE_UNLOCK_SERVICE_FILE}, ${DRONES_RULE_UNLOCK_TIMER_FILE}"
 chmod 644 "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_SERVICE_FILE}" "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_TIMER_FILE}"
-cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_SERVICE_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_SERVICE_FILE}"
-cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_TIMER_FILE}" "/etc/systemd/system/${DRONES_RULE_UNLOCK_TIMER_FILE}"
-systemctl daemon-reload
-systemctl restart --no-block "${DRONES_RULE_UNLOCK_TIMER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_SERVICE_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_UNLOCK_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_UNLOCK_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_UNLOCK_TIMER_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_RULE_UNLOCK_TIMER_FILE}"
