@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text, and_
 from spire.db import SessionLocal as session_local_spire
 
+from .settings import DRONES_BUCKET, DRONES_BUCKET_STATISTICS_PREFIX
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,23 +36,19 @@ def push_statistics(
     statistics_data: Dict[str, Any], journal_id: UUID, statistics_file: str
 ) -> None:
 
-    bucket = os.environ.get("AWS_S3_DRONES_BUCKET")
-    statistics_prefix = os.environ.get(
-        "AWS_S3_DRONES_BUCKET_STATISTICS_PREFIX", ""
-    ).rstrip("/")
-    if bucket is None:
+    if DRONES_BUCKET is None:
         logger.warning(
             "AWS_STATS_S3_BUCKET environment variable not defined, skipping storage of search results"
         )
         return
 
     result_bytes = json.dumps(statistics_data).encode("utf-8")
-    result_key = f"{statistics_prefix}/{journal_id}/v5/{statistics_file}"
+    result_key = f"{DRONES_BUCKET_STATISTICS_PREFIX}/{journal_id}/v5/{statistics_file}"
 
     s3 = boto3.client("s3")
     s3.put_object(
         Body=result_bytes,
-        Bucket=bucket,
+        Bucket=DRONES_BUCKET,
         Key=result_key,
         ContentType="application/json",
         Metadata={"drone": "statistics"},
@@ -59,7 +57,7 @@ def push_statistics(
     # TODO (Andrey) Understand why logger wont show messages some time and put them beside print
     # without print here exeption wont show.
     print(
-        f"Statistics of {statistics_file.split('.')[0]} push to bucket: s3://{bucket}/{result_key}"
+        f"Statistics of {statistics_file.split('.')[0]} push to bucket: s3://{DRONES_BUCKET}/{result_key}"
     )
 
 
