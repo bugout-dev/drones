@@ -20,10 +20,8 @@ PYTHON_ENV_DIR="${PYTHON_ENV_DIR:-/home/ubuntu/drones-env}"
 PYTHON="${PYTHON_ENV_DIR}/bin/python"
 PIP="${PYTHON_ENV_DIR}/bin/pip"
 SCRIPT_DIR="$(realpath $(dirname $0))"
-PARAMETERS_SCRIPT="${SCRIPT_DIR}/parameters.py"
 SECRETS_DIR="${SECRETS_DIR:-/home/ubuntu/drones-secrets}"
 PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
-AWS_SSM_PARAMETER_PATH="${AWS_SSM_PARAMETER_PATH:-/drones/prod}"
 
 DRONES_SERVICE_FILE="drones.service"
 # Drones statistics generator
@@ -49,9 +47,14 @@ echo "Updating Python dependencies"
 
 echo
 echo
+echo -e "${PREFIX_INFO} Install checkenv"
+HOME=/home/ubuntu /usr/local/go/bin/go install github.com/bugout-dev/checkenv@latest
+
+echo
+echo
 echo -e "${PREFIX_INFO} Retrieving deployment parameters"
 mkdir -p "${SECRETS_DIR}"
-AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" "${PYTHON}" "${PARAMETERS_SCRIPT}" extract -p "${AWS_SSM_PARAMETER_PATH}" -o "${PARAMETERS_ENV_PATH}"
+AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" /home/ubuntu/go/bin/checkenv show aws_ssm+drones:true > "${PARAMETERS_ENV_PATH}"
 
 echo
 echo
