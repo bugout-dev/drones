@@ -6,10 +6,11 @@ from typing import List, Optional
 from uuid import UUID
 import time
 
-from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
-from spire.journal.models import JournalEntryLock
+from spire.db import SessionLocal as session_local_spire
+from spire.journal.models import JournalEntryLock, JournalEntry, Journal
+from sqlalchemy import func, text
 
 from .data import (
     StatsTypes,
@@ -229,6 +230,83 @@ def journal_rules_unlock_handler(args: argparse.Namespace) -> None:
         db_session_spire.close()
 
 
+def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
+
+    """
+    Clean entries from journal.
+    """
+    db_session_spire = session_local_spire()
+    try:
+        # get counts per journal
+
+        query = db_session_spire.query( JournalEntry.journal_id, func.count(JournalEntry.id).label("entries_count")).group_by(
+            JournalEntry.journal_id
+        )
+
+        for journal_id, entries_count in query:
+            
+            if entries_count > args.max_entries:
+
+                row_numbers = db_session_spire.query(JournalEntry.id, func.row_number().over(order_by=text('created_at desc')).label("entry_number")).filter(
+                        JournalEntry.journal_id == journal_id
+                ).cte("row_numbers")
+                
+                
+                # delete entries in chunks
+
+                chunk_size = 100000
+
+                start_number = entries_count if entries_count - args.max_entries > 0 else args.max_entries
+
+
+                print(f"Deleting entries from journal {journal_id} (start number: {start_number})")
+
+                for entry_count in range(start_number, args.max_entries, -chunk_size):
+
+                    delete_statment = (db_session_spire.query(JournalEntry).
+                            filter(row_numbers.c.id == JournalEntry.id,
+                            row_numbers.c.entry_number > entry_count).delete(synchronize_session=False)
+                    )
+
+
+
+                    delete_statment.execute()
+
+                    db_session_spire.commit()
+
+    except Exception as err:
+        logger.error(f"Unable to clean journal entries, error: {str(err)}")
+        db_session_spire.rollback()
+
+
+
+def cleanup_reports_handler(args: argparse.Namespace) -> None:
+
+    """
+    Returns entries count for journals.
+    """
+
+    Green='\033[0;32m'
+    Yellow='\033[0;33m' 
+    Red='\033[0;31m'
+    NC='\033[0m'
+
+    db_session_spire = session_local_spire()
+    try:
+        # get counts per journal
+
+        query = db_session_spire.query(func.count(JournalEntry.id).label("entries_count"), Journal.name, Journal.id).group_by(
+            JournalEntry.journal_id
+        ).join(Journal, Journal.id == JournalEntry.journal_id).group_by(Journal.name, Journal.id)
+        for  entries_count, name, journal_id in query:
+            print(f"Journal {journal_id} has {entries_count} entries")
+            print(f"Cleanup journal {Green}{journal_id}{NC}:{Yellow}{name}{NC} will remove {Red}{entries_count - args.max_entries if entries_count - args.max_entries > 0 else 0 }{NC} entries")
+
+    except Exception as err:
+        logger.error(f"Unable to get journal entries count, error: {str(err)}")
+        db_session_spire.rollback()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Command Line Interface for Bugout drones"
@@ -415,6 +493,47 @@ def main() -> None:
         help="Drop locks not earlier than the specified value in seconds",
     )
     parser_rules_unlock.set_defaults(func=journal_rules_unlock_handler)
+
+
+    # Clean up parser
+
+    parser_cleanup = subcommands.add_parser(
+        "cleanup", description="Drone cleanup"
+    )
+    parser_cleanup.set_defaults(func=lambda _: parser_cleanup.print_help())
+
+    subcommands_cleanup = parser_cleanup.add_subparsers(
+        description="Drone cleanup commands"
+    )
+
+    parser_cleanup_journals = subcommands_cleanup.add_parser(
+        "journals", description="Clean up journals"
+    )
+    parser_cleanup_journals.add_argument(
+        "--max-entries",
+        type=int,
+        default=1000000,
+        help="Max number of entries in journal",
+    )
+    parser_cleanup_journals.add_argument(
+        "--batch-size",
+        type=int,
+        default=100000,
+        help="Number of entries to delete in one batch",
+    )
+
+    parser_cleanup_journals.set_defaults(func=journal_entries_cleanup_handler)
+
+    parser_cleanup_reports = subcommands_cleanup.add_parser(
+        "reports", description="Clean up reports"
+    )
+    parser_cleanup_reports.add_argument(
+        "--max-entries",
+        type=int,
+        default=1000000,
+        help="Max number of entries in journal",
+    )
+    parser_cleanup_reports.set_defaults(func=cleanup_reports_handler)
 
     args = parser.parse_args()
     args.func(args)
