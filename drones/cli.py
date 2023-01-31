@@ -568,7 +568,7 @@ def main() -> None:
     parser_cleanup_journals.add_argument(
         "--batch-size",
         type=int,
-        default=100000,
+        default=10000,
         help="Number of entries to delete in one batch",
     )
 
