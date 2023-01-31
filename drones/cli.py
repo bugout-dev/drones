@@ -8,7 +8,14 @@ import time
 
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
-from spire.db import SessionLocal as session_local_spire, create_spire_engine, SPIRE_DB_URI, BUGOUT_SPIRE_THREAD_DB_POOL_SIZE, BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW, SPIRE_DB_POOL_RECYCLE_SECONDS
+from spire.db import (
+    SessionLocal as session_local_spire,
+    create_spire_engine,
+    SPIRE_DB_URI,
+    BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
+    BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW,
+    SPIRE_DB_POOL_RECYCLE_SECONDS,
+)
 from spire.journal.models import JournalEntryLock, JournalEntry, Journal
 from sqlalchemy import func, text
 from sqlalchemy.orm import sessionmaker
@@ -237,64 +244,76 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
     Clean entries from journal.
     """
 
-
-    Green='\033[0;32m'
-    Yellow='\033[0;33m' 
-    Red='\033[0;31m'
-    NC='\033[0m'
-
+    Green = "\033[0;32m"
+    Yellow = "\033[0;33m"
+    Red = "\033[0;31m"
+    NC = "\033[0m"
 
     custom_engine = create_spire_engine(
         url=SPIRE_DB_URI,
         pool_size=BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
         max_overflow=BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW,
         pool_recycle=SPIRE_DB_POOL_RECYCLE_SECONDS,
-        statement_timeout=300000 # SPIRE_DB_STATEMENT_TIMEOUT_MILLIS
+        statement_timeout=300000,  # SPIRE_DB_STATEMENT_TIMEOUT_MILLIS
     )
 
     process_session = sessionmaker(bind=custom_engine)
     db_session = process_session()
 
-
     chunk_size = args.batch_size
     try:
         # get counts per journal
 
-        query = db_session.query( JournalEntry.journal_id, func.count(JournalEntry.id).label("entries_count"), ).group_by(
-            JournalEntry.journal_id
+        entries_count_per_journal = (
+            db_session.query(
+                func.count(JournalEntry.id).label("entries_count"),
+                Journal.name,
+                Journal.id,
+            )
+            .join(Journal, Journal.id == JournalEntry.journal_id)
+            .filter(Journal.search_index == None)
+            .group_by(Journal.name, Journal.id)
         )
 
-        query = db_session.query(func.count(JournalEntry.id).label("entries_count"), Journal.name, Journal.id).group_by(
-            JournalEntry.journal_id
-        ).join(Journal, Journal.id == JournalEntry.journal_id).group_by(Journal.name, Journal.id)
+        for entries_count, name, journal_id in entries_count_per_journal:
 
-
-        for entries_count, name, journal_id in query:
-            
             if entries_count > args.max_entries:
 
-                print(f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries")
+                print(
+                    f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries"
+                )
 
-                row_numbers = db_session.query(JournalEntry.id, func.row_number().over(order_by=text('created_at desc')).label("entry_number")).filter(
-                        JournalEntry.journal_id == journal_id
-                ).cte("row_numbers")
-                
-                
+                row_numbers = (
+                    db_session.query(
+                        JournalEntry.id,
+                        func.row_number()
+                        .over(order_by=text("created_at desc"))
+                        .label("entry_number"),
+                    )
+                    .filter(JournalEntry.journal_id == journal_id)
+                    .cte("row_numbers")
+                )
+
                 # delete entries in chunks
 
+                deleting_range = list(
+                    range(args.max_entries, entries_count, chunk_size)
+                )
 
-                deleting_range = list(range(args.max_entries, entries_count, chunk_size))
-
-                deleting_range.reverse()
+                deleting_range.reverse()  # start from end
 
                 for entry_count in deleting_range:
-                    print (f"Delete entries from entry_number > {entry_count}")
+                    print(f"Delete entries from entry_number > {entry_count}")
 
                     start = time.time()
 
-                    delete_statment = (db_session.query(JournalEntry).
-                            filter(row_numbers.c.id == JournalEntry.id,
-                            row_numbers.c.entry_number > entry_count).delete(synchronize_session=False)
+                    delete_statment = (
+                        db_session.query(JournalEntry)
+                        .filter(
+                            row_numbers.c.id == JournalEntry.id,
+                            row_numbers.c.entry_number > entry_count,
+                        )
+                        .delete(synchronize_session=False)
                     )
                     print(f"Amount of deleted entries: {delete_statment}")
                     print(f"Time: {time.time() - start}")
@@ -305,28 +324,36 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
         db_session.rollback()
 
 
-
 def cleanup_reports_handler(args: argparse.Namespace) -> None:
 
     """
     Returns entries count for journals.
     """
 
-    Green='\033[0;32m'
-    Yellow='\033[0;33m' 
-    Red='\033[0;31m'
-    NC='\033[0m'
+    Green = "\033[0;32m"
+    Yellow = "\033[0;33m"
+    Red = "\033[0;31m"
+    NC = "\033[0m"
 
     db_session_spire = session_local_spire()
     try:
         # get counts per journal
 
-        query = db_session_spire.query(func.count(JournalEntry.id).label("entries_count"), Journal.name, Journal.id).group_by(
-            JournalEntry.journal_id
-        ).join(Journal, Journal.id == JournalEntry.journal_id).group_by(Journal.name, Journal.id)
-        for  entries_count, name, journal_id in query:
+        query = (
+            db_session_spire.query(
+                func.count(JournalEntry.id).label("entries_count"),
+                Journal.name,
+                Journal.id,
+            )
+            .join(Journal, Journal.id == JournalEntry.journal_id)
+            .filter(Journal.search_index == None)
+            .group_by(Journal.name, Journal.id)
+        )
+        for entries_count, name, journal_id in query:
             print(f"Journal {journal_id} has {entries_count} entries")
-            print(f"Cleanup journal {Green}{journal_id}{NC}:{Yellow}{name}{NC} will remove {Red}{entries_count - args.max_entries if entries_count - args.max_entries > 0 else 0 }{NC} entries")
+            print(
+                f"Cleanup journal {Green}{journal_id}{NC}:{Yellow}{name}{NC} will remove {Red}{entries_count - args.max_entries if entries_count - args.max_entries > 0 else 0 }{NC} entries"
+            )
 
     except Exception as err:
         logger.error(f"Unable to get journal entries count, error: {str(err)}")
@@ -520,12 +547,9 @@ def main() -> None:
     )
     parser_rules_unlock.set_defaults(func=journal_rules_unlock_handler)
 
-
     # Clean up parser
 
-    parser_cleanup = subcommands.add_parser(
-        "cleanup", description="Drone cleanup"
-    )
+    parser_cleanup = subcommands.add_parser("cleanup", description="Drone cleanup")
     parser_cleanup.set_defaults(func=lambda _: parser_cleanup.print_help())
 
     subcommands_cleanup = parser_cleanup.add_subparsers(
