@@ -1,8 +1,9 @@
 import argparse
 from datetime import datetime, timedelta
 from distutils.util import strtobool
+from contextlib import contextmanager
 import logging
-from typing import List, Optional
+from typing import List, Optional, Generator
 from uuid import UUID
 import time
 
@@ -38,6 +39,23 @@ from .settings import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Colors
+
+Green = "\033[0;32m"
+Yellow = "\033[0;33m"
+Red = "\033[0;31m"
+NC = "\033[0m"
+
+
+@contextmanager
+def yield_session_maker(engine):
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -244,11 +262,6 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
     Clean entries from journal.
     """
 
-    Green = "\033[0;32m"
-    Yellow = "\033[0;33m"
-    Red = "\033[0;31m"
-    NC = "\033[0m"
-
     custom_engine = create_spire_engine(
         url=SPIRE_DB_URI,
         pool_size=BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
@@ -256,72 +269,69 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
         pool_recycle=SPIRE_DB_POOL_RECYCLE_SECONDS,
         statement_timeout=300000,  # SPIRE_DB_STATEMENT_TIMEOUT_MILLIS
     )
-
-    process_session = sessionmaker(bind=custom_engine)
-    db_session = process_session()
-
     chunk_size = args.batch_size
+
     try:
-        # get counts per journal
+        with yield_session_maker(engine=custom_engine) as db_session:
+            # get counts per journal
 
-        entries_count_per_journal = (
-            db_session.query(
-                func.count(JournalEntry.id).label("entries_count"),
-                Journal.name,
-                Journal.id,
+            entries_count_per_journal = (
+                db_session.query(
+                    func.count(JournalEntry.id).label("entries_count"),
+                    Journal.name,
+                    Journal.id,
+                )
+                .join(Journal, Journal.id == JournalEntry.journal_id)
+                .filter(Journal.search_index == None)
+                .group_by(Journal.name, Journal.id)
             )
-            .join(Journal, Journal.id == JournalEntry.journal_id)
-            .filter(Journal.search_index == None)
-            .group_by(Journal.name, Journal.id)
-        )
 
-        for entries_count, name, journal_id in entries_count_per_journal:
+            for entries_count, name, journal_id in entries_count_per_journal:
 
-            if entries_count > args.max_entries:
+                if entries_count > args.max_entries:
 
-                print(
-                    f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries"
-                )
-
-                row_numbers = (
-                    db_session.query(
-                        JournalEntry.id,
-                        func.row_number()
-                        .over(order_by=text("created_at desc"))
-                        .label("entry_number"),
+                    logger.info(
+                        f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries"
                     )
-                    .filter(JournalEntry.journal_id == journal_id)
-                    .cte("row_numbers")
-                )
 
-                # delete entries in chunks
-
-                deleting_range = list(
-                    range(args.max_entries, entries_count, chunk_size)
-                )
-
-                deleting_range.reverse()  # start from end
-
-                for entry_count in deleting_range:
-                    print(f"Delete entries from entry_number > {entry_count}")
-
-                    start = time.time()
-
-                    delete_statment = (
-                        db_session.query(JournalEntry)
-                        .filter(
-                            row_numbers.c.id == JournalEntry.id,
-                            row_numbers.c.entry_number > entry_count,
+                    row_numbers = (
+                        db_session.query(
+                            JournalEntry.id,
+                            func.row_number()
+                            .over(order_by=text("created_at desc"))
+                            .label("entry_number"),
                         )
-                        .delete(synchronize_session=False)
+                        .filter(JournalEntry.journal_id == journal_id)
+                        .cte("row_numbers")
                     )
-                    print(f"Amount of deleted entries: {delete_statment}")
-                    print(f"Time: {time.time() - start}")
-                    db_session.commit()
+
+                    # delete entries in chunks
+
+                    deleting_range = list(
+                        range(args.max_entries, entries_count, chunk_size)
+                    )
+
+                    deleting_range.reverse()  # start from end
+
+                    for entry_count in deleting_range:
+                        logger.info(f"Delete entries from entry_number > {entry_count}")
+
+                        start = time.time()
+
+                        delete_statment = (
+                            db_session.query(JournalEntry)
+                            .filter(
+                                row_numbers.c.id == JournalEntry.id,
+                                row_numbers.c.entry_number > entry_count,
+                            )
+                            .delete(synchronize_session=False)
+                        )
+                        logger.info(f"Amount of deleted entries: {delete_statment}")
+                        logger.info(f"Time: {time.time() - start}")
+                        db_session.commit()
 
     except Exception as err:
         logger.error(f"Unable to clean journal entries, error: {str(err)}")
-        db_session.rollback()
 
 
 def cleanup_reports_handler(args: argparse.Namespace) -> None:
@@ -329,11 +339,6 @@ def cleanup_reports_handler(args: argparse.Namespace) -> None:
     """
     Returns entries count for journals.
     """
-
-    Green = "\033[0;32m"
-    Yellow = "\033[0;33m"
-    Red = "\033[0;31m"
-    NC = "\033[0m"
 
     db_session_spire = session_local_spire()
     try:
@@ -350,14 +355,16 @@ def cleanup_reports_handler(args: argparse.Namespace) -> None:
             .group_by(Journal.name, Journal.id)
         )
         for entries_count, name, journal_id in query:
-            print(f"Journal {journal_id} has {entries_count} entries")
-            print(
+            logger.info(f"Journal {journal_id} has {entries_count} entries")
+            logger.info(
                 f"Cleanup journal {Green}{journal_id}{NC}:{Yellow}{name}{NC} will remove {Red}{entries_count - args.max_entries if entries_count - args.max_entries > 0 else 0 }{NC} entries"
             )
 
     except Exception as err:
         logger.error(f"Unable to get journal entries count, error: {str(err)}")
         db_session_spire.rollback()
+    finally:
+        db_session_spire.close()
 
 
 def main() -> None:
