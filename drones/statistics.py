@@ -35,7 +35,6 @@ timescales_delta: Dict[str, Dict[str, timedelta]] = {
 def push_statistics(
     statistics_data: Dict[str, Any], journal_id: UUID, statistics_file: str
 ) -> None:
-
     if DRONES_BUCKET is None:
         logger.warning(
             "AWS_STATS_S3_BUCKET environment variable not defined, skipping storage of search results"
@@ -196,7 +195,6 @@ def generate_tags_time_series(
     response_tags: Dict[Any, Any] = {}
 
     for created_date, tag, count in tags_time_series:
-
         if not response_tags.get(tag):
             response_tags[tag] = []
             if time_mask == "YYYY-MM-DD HH24":
@@ -465,7 +463,6 @@ def generate_highest_entropy_tags(
     unsorted_tags = []
 
     for count, tag in tags_count:
-
         # For tag with count 0 and tag count == count_of_entries, entropy = 0
         if count == 0 or count / entries_total_count == 1:
             unsorted_tags.append((tag, 0))
@@ -485,7 +482,6 @@ def entries_by_days(
     filter_condition: Any,
     start_day: Optional[date] = None,
 ):
-
     if filter_condition == True:
         tag_filter = True
     else:
@@ -526,7 +522,6 @@ def get_statistics(
     start_time: Optional[date] = None,
     end_time: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-
     current_timestamp = datetime.utcnow()
 
     year_ago = date.today() - timedelta(days=364)
@@ -540,12 +535,10 @@ def get_statistics(
     # Disribition of tags for session stats
 
     if statistics_type == "session" or statistics_type == "client":
-
         try:
             statistics_response["data"] = {}
 
             if timescale == "year":
-
                 filter = journals_models.JournalEntryTag.tag.like(
                     f"{statistics_type}:%"
                 )
@@ -565,7 +558,6 @@ def get_statistics(
                 end=end_time,
             )
             if statistics_type == "client":
-
                 statistics_response["data"].update(
                     week_to_week_retention(
                         db_session=db_session,
@@ -585,7 +577,6 @@ def get_statistics(
         return statistics_response
 
     try:
-
         if statistics_type == "errors":
             filter = journals_models.JournalEntryTag.tag.like("error:%")
         else:
@@ -676,7 +667,6 @@ def week_to_week_retention(
     start: Optional[date] = None,
     end: Optional[datetime] = None,
 ) -> Dict[str, List[Dict[str, Union[str, int]]]]:
-
     """
     Generate week to week retention stats for given journal
 
@@ -780,7 +770,6 @@ def generate_and_push(
     db_session_spire = session_local_spire()
 
     try:
-
         start_date = datetime.utcnow() - timescales_delta[timescale]["timedelta"]
 
         time_step = timescales_params[timescale]["timestep"]

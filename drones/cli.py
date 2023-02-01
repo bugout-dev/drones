@@ -157,7 +157,6 @@ def statistics_generate_handler(args: argparse.Namespace):
             stats_types = available_types
 
         for journal in journals:
-
             current_timestamp = datetime.utcnow()
 
             timesscales = available_timescales
@@ -167,11 +166,9 @@ def statistics_generate_handler(args: argparse.Namespace):
             print(f"Generate statistics for journal: {journal.id} ")
             start_time = time.time()
             for timescale in timesscales:
-
                 print(f"Time scale: {timescale}")
 
                 for statistics_type in ["stats", "errors", "session", "client"]:
-
                     if journal.search_index is not None and statistics_type in [
                         "errors",
                         "session",
@@ -198,7 +195,6 @@ def statistics_generate_handler(args: argparse.Namespace):
 
 
 def push_reports_from_redis(args: argparse.Namespace):
-
     db_session_spire = session_local_spire()
 
     try:
@@ -257,7 +253,6 @@ def journal_rules_unlock_handler(args: argparse.Namespace) -> None:
 
 
 def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
-
     """
     Clean entries from journal.
     """
@@ -287,9 +282,7 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
             )
 
             for entries_count, name, journal_id in entries_count_per_journal:
-
                 if entries_count > args.max_entries:
-
                     logger.info(
                         f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries"
                     )
@@ -335,7 +328,6 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
 
 
 def cleanup_reports_handler(args: argparse.Namespace) -> None:
-
     """
     Returns entries count for journals.
     """
