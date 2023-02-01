@@ -32,7 +32,6 @@ jmespath==1.0.1
 lxml==4.9.2
 multidict==6.0.4
 passlib==1.7.4
-pkg_resources==0.0.0
 protobuf==3.19.1
 psycopg2-binary==2.9.5
 pycparser==2.21
