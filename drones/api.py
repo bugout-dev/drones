@@ -65,9 +65,7 @@ async def generate_stats_and_return_url(
     s3_client = boto3.client("s3")
 
     for timescale in timescales:
-
         for stats_file in stats_types:
-
             # Generate link to S3 buket
             try:
                 result_key = f"{DRONES_BUCKET_STATISTICS_PREFIX}/{stats_update.journal_id}/{s3_version_prefix}{timescale}/{stats_file}.json"

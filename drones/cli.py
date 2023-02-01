@@ -1,15 +1,25 @@
 import argparse
 from datetime import datetime, timedelta
 from distutils.util import strtobool
+from contextlib import contextmanager
 import logging
-from typing import List, Optional
+from typing import List, Optional, Generator
 from uuid import UUID
 import time
 
-from spire.db import SessionLocal as session_local_spire
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
-from spire.journal.models import JournalEntryLock
+from spire.db import (
+    SessionLocal as session_local_spire,
+    create_spire_engine,
+    SPIRE_DB_URI,
+    BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
+    BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW,
+    SPIRE_DB_POOL_RECYCLE_SECONDS,
+)
+from spire.journal.models import JournalEntryLock, JournalEntry, Journal
+from sqlalchemy import func, text
+from sqlalchemy.orm import sessionmaker
 
 from .data import (
     StatsTypes,
@@ -29,6 +39,23 @@ from .settings import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Colors
+
+Green = "\033[0;32m"
+Yellow = "\033[0;33m"
+Red = "\033[0;31m"
+NC = "\033[0m"
+
+
+@contextmanager
+def yield_session_maker(engine):
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def reports_generate_handler(args: argparse.Namespace):
@@ -130,7 +157,6 @@ def statistics_generate_handler(args: argparse.Namespace):
             stats_types = available_types
 
         for journal in journals:
-
             current_timestamp = datetime.utcnow()
 
             timesscales = available_timescales
@@ -140,11 +166,9 @@ def statistics_generate_handler(args: argparse.Namespace):
             print(f"Generate statistics for journal: {journal.id} ")
             start_time = time.time()
             for timescale in timesscales:
-
                 print(f"Time scale: {timescale}")
 
                 for statistics_type in ["stats", "errors", "session", "client"]:
-
                     if journal.search_index is not None and statistics_type in [
                         "errors",
                         "session",
@@ -171,7 +195,6 @@ def statistics_generate_handler(args: argparse.Namespace):
 
 
 def push_reports_from_redis(args: argparse.Namespace):
-
     db_session_spire = session_local_spire()
 
     try:
@@ -224,6 +247,113 @@ def journal_rules_unlock_handler(args: argparse.Namespace) -> None:
         logger.info(f"Dropped {objects_to_drop_num} locks")
     except Exception as err:
         logger.error(f"Unable to drop locks, error: {str(err)}")
+        db_session_spire.rollback()
+    finally:
+        db_session_spire.close()
+
+
+def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
+    """
+    Clean entries from journal.
+    """
+
+    custom_engine = create_spire_engine(
+        url=SPIRE_DB_URI,
+        pool_size=BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
+        max_overflow=BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW,
+        pool_recycle=SPIRE_DB_POOL_RECYCLE_SECONDS,
+        statement_timeout=300000,  # SPIRE_DB_STATEMENT_TIMEOUT_MILLIS
+    )
+    chunk_size = args.batch_size
+
+    try:
+        with yield_session_maker(engine=custom_engine) as db_session:
+            # get counts per journal
+
+            entries_count_per_journal = (
+                db_session.query(
+                    func.count(JournalEntry.id).label("entries_count"),
+                    Journal.name,
+                    Journal.id,
+                )
+                .join(Journal, Journal.id == JournalEntry.journal_id)
+                .filter(Journal.search_index == None)
+                .group_by(Journal.name, Journal.id)
+            )
+
+            for entries_count, name, journal_id in entries_count_per_journal:
+                if entries_count > args.max_entries:
+                    logger.info(
+                        f"Journal: {Yellow}{name}{NC} ({Green}{journal_id}{NC}) has {Yellow}{entries_count}{NC} entries. Delete {Red}{entries_count - args.max_entries}{NC} entries"
+                    )
+
+                    row_numbers = (
+                        db_session.query(
+                            JournalEntry.id,
+                            func.row_number()
+                            .over(order_by=text("created_at desc"))
+                            .label("entry_number"),
+                        )
+                        .filter(JournalEntry.journal_id == journal_id)
+                        .cte("row_numbers")
+                    )
+
+                    # delete entries in chunks
+
+                    deleting_range = list(
+                        range(args.max_entries, entries_count, chunk_size)
+                    )
+
+                    deleting_range.reverse()  # start from end
+
+                    for entry_count in deleting_range:
+                        logger.info(f"Delete entries from entry_number > {entry_count}")
+
+                        start = time.time()
+
+                        delete_statment = (
+                            db_session.query(JournalEntry)
+                            .filter(
+                                row_numbers.c.id == JournalEntry.id,
+                                row_numbers.c.entry_number > entry_count,
+                            )
+                            .delete(synchronize_session=False)
+                        )
+                        logger.info(f"Amount of deleted entries: {delete_statment}")
+                        logger.info(f"Time: {time.time() - start}")
+                        db_session.commit()
+
+    except Exception as err:
+        logger.error(f"Unable to clean journal entries, error: {str(err)}")
+
+
+def cleanup_reports_handler(args: argparse.Namespace) -> None:
+    """
+    Returns entries count for journals.
+    """
+
+    db_session_spire = session_local_spire()
+    try:
+        # get counts per journal
+
+        query = (
+            db_session_spire.query(
+                func.count(JournalEntry.id).label("entries_count"),
+                Journal.name,
+                Journal.id,
+            )
+            .join(Journal, Journal.id == JournalEntry.journal_id)
+            .filter(Journal.search_index == None)
+            .group_by(Journal.name, Journal.id)
+        )
+        for entries_count, name, journal_id in query:
+            logger.info(f"Journal {journal_id} has {entries_count} entries")
+            logger.info(
+                f"Cleanup journal {Green}{journal_id}{NC}:{Yellow}{name}{NC} will remove {Red}{entries_count - args.max_entries if entries_count - args.max_entries > 0 else 0 }{NC} entries"
+            )
+
+    except Exception as err:
+        logger.error(f"Unable to get journal entries count, error: {str(err)}")
         db_session_spire.rollback()
     finally:
         db_session_spire.close()
@@ -415,6 +545,44 @@ def main() -> None:
         help="Drop locks not earlier than the specified value in seconds",
     )
     parser_rules_unlock.set_defaults(func=journal_rules_unlock_handler)
+
+    # Clean up parser
+
+    parser_cleanup = subcommands.add_parser("cleanup", description="Drone cleanup")
+    parser_cleanup.set_defaults(func=lambda _: parser_cleanup.print_help())
+
+    subcommands_cleanup = parser_cleanup.add_subparsers(
+        description="Drone cleanup commands"
+    )
+
+    parser_cleanup_journals = subcommands_cleanup.add_parser(
+        "journals", description="Clean up journals"
+    )
+    parser_cleanup_journals.add_argument(
+        "--max-entries",
+        type=int,
+        default=1000000,
+        help="Max number of entries in journal",
+    )
+    parser_cleanup_journals.add_argument(
+        "--batch-size",
+        type=int,
+        default=10000,
+        help="Number of entries to delete in one batch",
+    )
+
+    parser_cleanup_journals.set_defaults(func=journal_entries_cleanup_handler)
+
+    parser_cleanup_reports = subcommands_cleanup.add_parser(
+        "reports", description="Clean up reports"
+    )
+    parser_cleanup_reports.add_argument(
+        "--max-entries",
+        type=int,
+        default=1000000,
+        help="Max number of entries in journal",
+    )
+    parser_cleanup_reports.set_defaults(func=cleanup_reports_handler)
 
     args = parser.parse_args()
     args.func(args)

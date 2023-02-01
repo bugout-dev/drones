@@ -17,7 +17,6 @@ from .settings import REDIS_FAILED_REPORTS_QUEUE, HUMBUG_REPORTS_MAX_TAG_LENGTH
 def upload_report_tasks(
     redis_client: Redis, queue_key: str, command: str, chunk_size: int
 ):
-
     """
     Return parsed reports from redis
 
@@ -85,14 +84,12 @@ def write_reports(
     report_tasks: List[HumbugCreateReportTask],
     journal_by_token: Dict[str, str],
 ):
-
     """
     Push all reports to database in one chunk
     """
     pushed = 0
     for report_task in report_tasks:
         try:
-
             if not journal_by_token.get(str(report_task.bugout_token)):
                 continue
 
@@ -147,11 +144,9 @@ def process_humbug_tasks_queue(
     block: bool,
     timeout: int,
 ):
-
     print("Polling reports queue start")
     print(f"Redis is connected:{redis_connection().execute_command('PING')}")
     while True:
-
         try:
             redis_client = redis_connection()
             # get all new reports
@@ -204,7 +199,6 @@ def pick_humbug_tasks_queue(
     chunk_size: int,
     start: int,
 ):
-
     redis_client = redis_connection()
 
     if command == "lrange":
