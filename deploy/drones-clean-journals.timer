@@ -1,9 +1,0 @@
-[Unit]
-Description=Clean journal entries with limit per journal
-
-[Timer]
-OnBootSec=10s
-OnUnitActiveSec=2m
-
-[Install]
-WantedBy=timers.target

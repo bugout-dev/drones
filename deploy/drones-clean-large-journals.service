@@ -1,5 +1,5 @@
 [Unit]
-Description=Clean journal entries from the database
+Description=Clean journal entries over the limit from the database
 After=network.target
 
 [Service]
@@ -7,4 +7,4 @@ Type=oneshot
 WorkingDirectory=/home/ubuntu/drones
 EnvironmentFile=/home/ubuntu/drones-secrets/app.env
 ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli cleanup journals --max-entries 1000000 --batch-size 10000
-SyslogIdentifier=drones-rule-unlock
+SyslogIdentifier=drones-clean-large-journals

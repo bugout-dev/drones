@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean journal entries over the limit from the database
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=60m
+
+[Install]
+WantedBy=timers.target
