@@ -40,3 +40,9 @@ except:
     raise ValueError(
         f"HUMBUG_REPORTS_MAX_TAG_LENGTH must be an integer: {HUMBUG_REPORTS_MAX_TAG_LENGTH_RAW}"
     )
+
+# Great Wyrm votes
+MOONSTREAM_S3_PUBLIC_DATA_BUCKET = os.environ.get("MOONSTREAM_S3_PUBLIC_DATA_BUCKET")
+MOONSTREAM_S3_PUBLIC_DATA_BUCKET_PREFIX = os.environ.get(
+    "MOONSTREAM_S3_PUBLIC_DATA_BUCKET_PREFIX", "dev"
+)

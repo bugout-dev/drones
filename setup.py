@@ -45,5 +45,10 @@ setup(
         ],
         "distribute": ["setuptools", "twine", "wheel"],
     },
-    entry_points={"console_scripts": ["drones=drones.cli:main"]},
+    entry_points={
+        "console_scripts": [
+            "drones=drones.cli:main",
+            "great-wyrm-votes=drones.great_wyrm.votes:main",
+        ]
+    },
 )
