@@ -163,7 +163,7 @@ def fetch_votes(db_session: Session, journal_id: UUID):
     """
     Fetch all votes.
     """
-    game_session_tag = "game_session_is"
+    game_session_tag = "game_session_id"
     stage_tag = "stage"
     path_tag = "path"
     player_id_tag = "player_id"
