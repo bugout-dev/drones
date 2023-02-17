@@ -40,6 +40,7 @@ import os
 import time
 from contextlib import contextmanager
 from datetime import datetime
+from pprint import pprint
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -158,84 +159,90 @@ def fetch_game_sessions_votes(db_session: Session, journal_id: UUID) -> Query:
     return game_sessions_votes
 
 
-def fetch_votes(db_session: Session, journal_id: UUID) -> Query:
+def fetch_votes(db_session: Session, journal_id: UUID):
     """
     Fetch all votes.
     """
-    # Game session IDs
-    len_game_session_id_str = len("game_session_id:") + 1
-    game_session_ids = (
-        db_session.query(
-            JournalEntryTag.journal_entry_id.label("entry_id"),
-            func.substr(JournalEntryTag.tag, len_game_session_id_str).label(
-                "game_session_id"
+    game_session_tag = "game_session_is"
+    stage_tag = "stage"
+    path_tag = "path"
+    player_id_tag = "player_id"
+
+    result = (
+        db_session.execute(  # type: ignore
+            text(
+                """
+    With events_table as (
+        SELECT
+            journal_entry_id,
+                CASE 
+                    WHEN tag LIKE :game_session_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
+                    ELSE NULL
+                END as game_session_id,
+                CASE 
+                    WHEN tag LIKE :stage_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
+                    ELSE NULL
+                END as stage,
+                CASE 
+                    WHEN tag LIKE :path_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
+                    ELSE NULL
+                END as path,
+                CASE 
+                    WHEN tag LIKE :player_id_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
+                    ELSE NULL
+                END as player_id,
+                to_char(journal_entries.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at
+        FROM journal_entry_tags JOIN journal_entries on journal_entry_tags.journal_entry_id = journal_entries.id
+        WHERE journal_id = :journal_id
+    ), grouping as (
+        SELECT DISTINCT
+            journal_entry_id,
+            string_agg(game_session_id,',') as game_session_id,
+            string_agg(stage,',') as stage,
+            string_agg(path,',') as path,
+            string_agg(player_id,',') as player_id,
+            created_at
+        FROM events_table
+        GROUP BY 1,6
+    ), paths as (SELECT
+            game_session_id,
+            stage,
+            json_agg(json_build_object(
+            :path_tag, path,
+            :player_id_tag, player_id,
+            'created_at', created_at
+            )) as path_player_ids
+        FROM grouping
+        GROUP BY 1, 2
+    ), stages as (SELECT
+            game_session_id,
+            json_agg(json_build_object(
+            :stage_tag, stage, 
+            'paths', path_player_ids
+            )) as stage_path_player_ids
+        FROM paths
+        GROUP BY 1
+    )SELECT
+        json_agg(json_build_object(
+        :game_session_tag,  game_session_id,
+        'stages', stage_path_player_ids
+        )) as json_data
+        FROM stages;
+    """
             ),
+            {
+                "game_session_tag": game_session_tag,
+                "stage_tag": stage_tag,
+                "path_tag": path_tag,
+                "player_id_tag": player_id_tag,
+                "journal_id": str(journal_id),
+            },
         )
-        .select_from(JournalEntryTag)
-        .filter(JournalEntryTag.tag.like("game_session_id:%"))
-    ).subquery(name="game_session_ids")
-    game_session_ids_alias = aliased(game_session_ids)
-
-    # Stages
-    len_stage_str = len("stage:") + 1
-    stages = (
-        db_session.query(
-            JournalEntryTag.journal_entry_id.label("entry_id"),
-            func.substr(JournalEntryTag.tag, len_stage_str).label("stage"),
-        ).filter(JournalEntryTag.tag.like("stage:%"))
-    ).subquery(name="stages")
-    stages_alias = aliased(stages)
-
-    # Paths
-    len_path_str = len("path:") + 1
-    paths = (
-        db_session.query(
-            JournalEntryTag.journal_entry_id.label("entry_id"),
-            func.substr(JournalEntryTag.tag, len_path_str).label("path"),
-        ).filter(JournalEntryTag.tag.like("path:%"))
-    ).subquery(name="paths")
-    paths_alias = aliased(paths)
-
-    # Player IDs
-    len_player_id_str = len("player_id:") + 1
-    player_ids = (
-        db_session.query(
-            JournalEntryTag.journal_entry_id.label("entry_id"),
-            func.substr(JournalEntryTag.tag, len_player_id_str).label("player_id"),
-        ).filter(JournalEntryTag.tag.like("player_id:%"))
-    ).subquery(name="player_id")
-    player_ids_alias = aliased(player_ids)
-
-    # Fetch votes
-    votes_query = (
-        db_session.query(
-            JournalEntry.id.label("entry_id"),
-            game_session_ids_alias.c.game_session_id,
-            stages_alias.c.stage,
-            paths_alias.c.path,
-            player_ids_alias.c.player_id,
-            JournalEntry.created_at.label("created_at"),
-        )
-        .select_from(JournalEntry)
-        .join(
-            game_session_ids_alias, game_session_ids_alias.c.entry_id == JournalEntry.id
-        )
-        .join(stages_alias, stages_alias.c.entry_id == JournalEntry.id)
-        .join(paths_alias, paths_alias.c.entry_id == JournalEntry.id)
-        .join(player_ids_alias, player_ids_alias.c.entry_id == JournalEntry.id)
-        .join(JournalEntryTag, JournalEntry.id == JournalEntryTag.journal_entry_id)
-        .filter(JournalEntry.journal_id == journal_id)
-        .group_by(
-            JournalEntry.id,
-            game_session_ids_alias.c.game_session_id,
-            stages_alias.c.stage,
-            paths_alias.c.path,
-            player_ids_alias.c.player_id,
-        )
-        .order_by(text("created_at DESC"))
+        .fetchone()
+        .json_data
     )
 
-    return votes_query
+    return result
 
 
 def stats_update_handler(args: argparse.Namespace) -> None:
