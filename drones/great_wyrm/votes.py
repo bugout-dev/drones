@@ -68,31 +68,7 @@ yield_db_read_only_session_ctx = contextmanager(yield_db_read_only_session)
 DEFAULT_VOTES_CHUNK_SIZE = 100
 
 
-class Vote(BaseModel):
-    player_id: UUID
-    created_at: datetime
-
-    path: int
-    stage: int
-    game_session_id: UUID
-
-
-class GameStagePath(BaseModel):
-    path: int
-    votes: List[Vote] = Field(default_factory=list)
-
-
-class GameStage(BaseModel):
-    stage: int
-    paths: List[GameStagePath] = Field(default_factory=list)
-
-
-class Game(BaseModel):
-    game_session_id: UUID
-    stages: List[GameStage] = Field(default_factory=list)
-
-
-def push_stats(data: Dict[str, Any], filename: str) -> None:
+def push_stats(data: Any, filename: str) -> None:
     """
     Push data to bucket.
     """
@@ -159,7 +135,7 @@ def fetch_game_sessions_votes(db_session: Session, journal_id: UUID) -> Query:
     return game_sessions_votes
 
 
-def fetch_votes(db_session: Session, journal_id: UUID):
+def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
     """
     Fetch all votes.
     """
@@ -245,22 +221,164 @@ def fetch_votes(db_session: Session, journal_id: UUID):
     return result
 
 
+def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
+    """
+    Fetch all votes and compose game session object.
+    """
+    # Game session IDs
+    len_game_session_id_str = len("game_session_id:") + 1
+    game_session_ids = (
+        db_session.query(
+            JournalEntryTag.journal_entry_id.label("entry_id"),
+            func.substr(JournalEntryTag.tag, len_game_session_id_str).label(
+                "game_session_id"
+            ),
+        )
+        .select_from(JournalEntryTag)
+        .filter(JournalEntryTag.tag.like("game_session_id:%"))
+    ).subquery(name="game_session_ids")
+    game_session_ids_alias = aliased(game_session_ids)
+
+    # Stages
+    len_stage_str = len("stage:") + 1
+    stages = (
+        db_session.query(
+            JournalEntryTag.journal_entry_id.label("entry_id"),
+            func.substr(JournalEntryTag.tag, len_stage_str).label("stage"),
+        ).filter(JournalEntryTag.tag.like("stage:%"))
+    ).subquery(name="stages")
+    stages_alias = aliased(stages)
+
+    # Paths
+    len_path_str = len("path:") + 1
+    paths = (
+        db_session.query(
+            JournalEntryTag.journal_entry_id.label("entry_id"),
+            func.substr(JournalEntryTag.tag, len_path_str).label("path"),
+        ).filter(JournalEntryTag.tag.like("path:%"))
+    ).subquery(name="paths")
+    paths_alias = aliased(paths)
+
+    # Player IDs
+    len_player_id_str = len("player_id:") + 1
+    player_ids = (
+        db_session.query(
+            JournalEntryTag.journal_entry_id.label("entry_id"),
+            func.substr(JournalEntryTag.tag, len_player_id_str).label("player_id"),
+        ).filter(JournalEntryTag.tag.like("player_id:%"))
+    ).subquery(name="player_id")
+    player_ids_alias = aliased(player_ids)
+
+    # Fetch votes
+    votes_query = (
+        db_session.query(
+            JournalEntry.id.label("entry_id"),
+            game_session_ids_alias.c.game_session_id.label("game_session_id"),
+            stages_alias.c.stage.label("stage"),
+            paths_alias.c.path.label("path"),
+            player_ids_alias.c.player_id.label("player_id"),
+            JournalEntry.created_at.label("created_at"),
+        )
+        .select_from(JournalEntry)
+        .join(
+            game_session_ids_alias, game_session_ids_alias.c.entry_id == JournalEntry.id
+        )
+        .join(stages_alias, stages_alias.c.entry_id == JournalEntry.id)
+        .join(paths_alias, paths_alias.c.entry_id == JournalEntry.id)
+        .join(player_ids_alias, player_ids_alias.c.entry_id == JournalEntry.id)
+        .join(JournalEntryTag, JournalEntry.id == JournalEntryTag.journal_entry_id)
+        .filter(JournalEntry.journal_id == journal_id)
+        .group_by(
+            JournalEntry.id,
+            game_session_ids_alias.c.game_session_id,
+            stages_alias.c.stage,
+            paths_alias.c.path,
+            player_ids_alias.c.player_id,
+        )
+        .order_by(text("created_at DESC"))
+    ).subquery(name="votes_query")
+    votes_query_alias = aliased(votes_query)
+
+    # Build JSON obj with paths
+    paths_query = (
+        db_session.query(
+            votes_query_alias.c.game_session_id,
+            votes_query_alias.c.stage,
+            func.array_agg(
+                func.jsonb_build_object(
+                    "path",
+                    votes_query_alias.c.path,
+                    "player_id",
+                    votes_query_alias.c.player_id,
+                    "created_at",
+                    votes_query_alias.c.created_at,
+                ),
+            ).label("paths"),
+        )
+        .select_from(votes_query_alias)
+        .group_by(votes_query_alias.c.game_session_id, votes_query_alias.c.stage)
+    ).subquery(name="paths_query")
+    paths_query_alias = aliased(paths_query)
+
+    # Build JSON object with stages
+    stages_query = (
+        db_session.query(
+            paths_query_alias.c.game_session_id,
+            func.array_agg(
+                func.jsonb_build_object(
+                    "stage",
+                    paths_query_alias.c.stage,
+                    "paths",
+                    paths_query_alias.c.paths,
+                ),
+            ).label("stages"),
+        )
+        .select_from(paths_query_alias)
+        .group_by(paths_query_alias.c.game_session_id)
+    ).subquery(name="stages_query")
+    stages_query_alias = aliased(stages_query)
+
+    # Build JSON object with game sessions
+    game_sessions = db_session.query(
+        func.array_agg(
+            func.jsonb_build_object(
+                "game_session_id",
+                stages_query_alias.c.game_session_id,
+                "stages",
+                stages_query_alias.c.stages,
+            ),
+        ),
+    ).select_from(stages_query_alias)
+
+    game_sessions_obj = game_sessions.one_or_none()
+
+    return game_sessions_obj
+
+
 def stats_update_handler(args: argparse.Namespace) -> None:
     with yield_db_read_only_session_ctx() as db_session:
-        game_sessions_votes_query = fetch_game_sessions_votes(
+        # game_sessions_votes_query = fetch_game_sessions_votes(
+        #     db_session=db_session, journal_id=args.journal
+        # )
+        # print(game_sessions_votes_query.all())
+
+        # SQLAlchemy implementation
+        game_sessions_obj = fetch_game_sessions_obj(
             db_session=db_session, journal_id=args.journal
         )
-        print(game_sessions_votes_query.all())
+        # # Raw SQL implementation
+        # game_sessions_obj = fetch_game_sessions_obj_raw(
+        #     db_session=db_session, journal_id=args.journal
+        # )
 
-        votes_query = fetch_votes(db_session=db_session, journal_id=args.journal)
-
-        data = {}
-        for vote in votes_query:
-            print(vote)
-            # data[i[0]] = i[1]
+        data = []
+        for obj in game_sessions_obj:
+            data.append(obj)
 
         if args.push_to_bucket:
             push_stats(data=data, filename="game_session_ids.json")
+        else:
+            print(json.dumps(data))
 
 
 def main() -> None:
