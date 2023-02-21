@@ -6,5 +6,5 @@ After=network.target
 Type=oneshot
 WorkingDirectory=/home/ubuntu/drones
 EnvironmentFile=/home/ubuntu/drones-secrets/app.env
-ExecStart=/home/ubuntu/drones-env/bin/python -m drones.great_wyrm.votes stats update --journal "${BUGOUT_GREATWYRM_JOURNAL_ID}" --push-to-bucket
+ExecStart=/home/ubuntu/drones-env/bin/python -m drones.great_wyrm.votes stats update --journal "${BUGOUT_GREATWYRM_VOTES_JOURNAL_ID}" --push-to-bucket
 SyslogIdentifier=drones-great-wyrm-votes

@@ -2,56 +2,38 @@
 Parse votes from Humbug journal for Great Wyrm, 
 generate statistics and upload to S3 bucket.
 
+Structure:
+
 [
-    {
-        game_session_id: <uuid>
-        player_id: <uuid> (store in in SessionStorage at web browser)
-        stage: <int>
-        path: <int>
-        created_at: <datetime> (from entry)
-    }
+    game_session_id: <uuid>,
+    stages: [
+        stage: <int>,
+        paths: [
+            path: <int>,
+            client_id: <uuid>,  # store in in SessionStorage at web browser
+            created_at: <datetime> (from entry)
+        ]
+    ]
 ]
 
-Structure:
-- game_session
-    - stage 1
-        - paths
-    - stage 2
-
 Two times of json stats:
-1. List of game sessions with stages - show total number of votes
-2. List of votes for specific game session -> stage - showing votes for different paths
-
-(1) - For menu
-1. Fetch all votes
-2. Combine all votes depends on game_session and stage
-3. Remove same temp_user_id for same path
-4. Show list of stages with total votes number
-
-(2) - For dashboard
-1. Fetch all votes with "tag:game_session:<uuid>&tag:stage:<int>"
-2. Show votes for each path
+1. game_sessions_summary - show total number of votes
+2. game_sessions - show expanded structure of all sessions and votes
 """
 
 import argparse
 import json
 import logging
-import os
-import time
 from contextlib import contextmanager
-from datetime import datetime
-from pprint import pprint
 from typing import Any, Dict, List
 from uuid import UUID
 
 import boto3
-from pydantic import BaseModel, Field
 from spire.db import yield_db_read_only_session
 from spire.journal.models import JournalEntry, JournalEntryTag
-from sqlalchemy import ARRAY, String, and_, func, text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Query, Session, aliased
 from sqlalchemy.sql import text
-from sqlalchemy.sql.expression import cast
 
 from ..settings import (
     MOONSTREAM_S3_PUBLIC_DATA_BUCKET,
@@ -64,8 +46,6 @@ logger = logging.getLogger(__name__)
 s3 = boto3.client("s3")
 
 yield_db_read_only_session_ctx = contextmanager(yield_db_read_only_session)
-
-DEFAULT_VOTES_CHUNK_SIZE = 100
 
 
 def push_stats(data: Any, filename: str) -> None:
@@ -101,7 +81,7 @@ def push_stats(data: Any, filename: str) -> None:
         )
 
 
-def fetch_game_sessions_votes(db_session: Session, journal_id: UUID) -> Query:
+def fetch_game_sessions_summary(db_session: Session, journal_id: UUID) -> List[Any]:
     """
     Query database for list of game sessions and number of votes in it.
     """
@@ -121,7 +101,7 @@ def fetch_game_sessions_votes(db_session: Session, journal_id: UUID) -> Query:
     ).subquery(name="entry_ids_game_session_ids")
 
     # Group by session id (tag)
-    game_sessions_votes = (
+    game_sessions_summary = (
         db_session.query(
             entry_ids_game_session_ids.c.game_session_id.label("game_session_id"),
             func.count(entry_ids_game_session_ids.c.entry_id).label(
@@ -130,19 +110,19 @@ def fetch_game_sessions_votes(db_session: Session, journal_id: UUID) -> Query:
         )
         .group_by(entry_ids_game_session_ids.c.game_session_id)
         .order_by(text("game_session_votes DESC"))
-    )
+    ).all()
 
-    return game_sessions_votes
+    return game_sessions_summary
 
 
-def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
+def fetch_game_sessions_obj_sql(db_session: Session, journal_id: UUID) -> List[Any]:
     """
-    Fetch all votes.
+    Fetch all votes and compose game session object.
     """
     game_session_tag = "game_session_id"
     stage_tag = "stage"
     path_tag = "path"
-    player_id_tag = "player_id"
+    client_id_tag = "client_id"
 
     result = (
         db_session.execute(  # type: ignore
@@ -164,9 +144,9 @@ def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
                     ELSE NULL
                 END as path,
                 CASE 
-                    WHEN tag LIKE :player_id_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
+                    WHEN tag LIKE :client_id_tag || ':%' THEN substr(tag, POSITION(':' in tag) + 1)
                     ELSE NULL
-                END as player_id,
+                END as client_id,
                 to_char(journal_entries.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at
         FROM journal_entry_tags JOIN journal_entries on journal_entry_tags.journal_entry_id = journal_entries.id
         WHERE journal_id = :journal_id
@@ -176,7 +156,7 @@ def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
             string_agg(game_session_id,',') as game_session_id,
             string_agg(stage,',') as stage,
             string_agg(path,',') as path,
-            string_agg(player_id,',') as player_id,
+            string_agg(client_id,',') as client_id,
             created_at
         FROM events_table
         GROUP BY 1,6
@@ -185,23 +165,23 @@ def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
             stage,
             json_agg(json_build_object(
             :path_tag, path,
-            :player_id_tag, player_id,
+            :client_id_tag, client_id,
             'created_at', created_at
-            )) as path_player_ids
+            )) as path_client_ids
         FROM grouping
         GROUP BY 1, 2
     ), stages as (SELECT
             game_session_id,
             json_agg(json_build_object(
             :stage_tag, stage, 
-            'paths', path_player_ids
-            )) as stage_path_player_ids
+            'paths', path_client_ids
+            )) as stage_path_client_ids
         FROM paths
         GROUP BY 1
     )SELECT
         json_agg(json_build_object(
         :game_session_tag,  game_session_id,
-        'stages', stage_path_player_ids
+        'stages', stage_path_client_ids
         )) as json_data
         FROM stages;
     """
@@ -210,7 +190,7 @@ def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
                 "game_session_tag": game_session_tag,
                 "stage_tag": stage_tag,
                 "path_tag": path_tag,
-                "player_id_tag": player_id_tag,
+                "client_id_tag": client_id_tag,
                 "journal_id": str(journal_id),
             },
         )
@@ -221,7 +201,7 @@ def fetch_game_sessions_obj_raw(db_session: Session, journal_id: UUID):
     return result
 
 
-def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
+def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> List[Any]:
     """
     Fetch all votes and compose game session object.
     """
@@ -260,14 +240,14 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
     paths_alias = aliased(paths)
 
     # Player IDs
-    len_player_id_str = len("player_id:") + 1
-    player_ids = (
+    len_client_id_str = len("client_id:") + 1
+    client_ids = (
         db_session.query(
             JournalEntryTag.journal_entry_id.label("entry_id"),
-            func.substr(JournalEntryTag.tag, len_player_id_str).label("player_id"),
-        ).filter(JournalEntryTag.tag.like("player_id:%"))
-    ).subquery(name="player_id")
-    player_ids_alias = aliased(player_ids)
+            func.substr(JournalEntryTag.tag, len_client_id_str).label("client_id"),
+        ).filter(JournalEntryTag.tag.like("client_id:%"))
+    ).subquery(name="client_id")
+    client_ids_alias = aliased(client_ids)
 
     # Fetch votes
     votes_query = (
@@ -276,7 +256,7 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
             game_session_ids_alias.c.game_session_id.label("game_session_id"),
             stages_alias.c.stage.label("stage"),
             paths_alias.c.path.label("path"),
-            player_ids_alias.c.player_id.label("player_id"),
+            client_ids_alias.c.client_id.label("client_id"),
             JournalEntry.created_at.label("created_at"),
         )
         .select_from(JournalEntry)
@@ -285,7 +265,7 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
         )
         .join(stages_alias, stages_alias.c.entry_id == JournalEntry.id)
         .join(paths_alias, paths_alias.c.entry_id == JournalEntry.id)
-        .join(player_ids_alias, player_ids_alias.c.entry_id == JournalEntry.id)
+        .join(client_ids_alias, client_ids_alias.c.entry_id == JournalEntry.id)
         .join(JournalEntryTag, JournalEntry.id == JournalEntryTag.journal_entry_id)
         .filter(JournalEntry.journal_id == journal_id)
         .group_by(
@@ -293,7 +273,7 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
             game_session_ids_alias.c.game_session_id,
             stages_alias.c.stage,
             paths_alias.c.path,
-            player_ids_alias.c.player_id,
+            client_ids_alias.c.client_id,
         )
         .order_by(text("created_at DESC"))
     ).subquery(name="votes_query")
@@ -308,8 +288,8 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
                 func.jsonb_build_object(
                     "path",
                     votes_query_alias.c.path,
-                    "player_id",
-                    votes_query_alias.c.player_id,
+                    "client_id",
+                    votes_query_alias.c.client_id,
                     "created_at",
                     votes_query_alias.c.created_at,
                 ),
@@ -352,33 +332,50 @@ def fetch_game_sessions_obj(db_session: Session, journal_id: UUID) -> Query:
 
     game_sessions_obj = game_sessions.one_or_none()
 
+    if game_sessions_obj is None:
+        game_sessions_obj = []
+
     return game_sessions_obj
 
 
 def stats_update_handler(args: argparse.Namespace) -> None:
     with yield_db_read_only_session_ctx() as db_session:
-        # game_sessions_votes_query = fetch_game_sessions_votes(
-        #     db_session=db_session, journal_id=args.journal
-        # )
-        # print(game_sessions_votes_query.all())
-
-        # SQLAlchemy implementation
-        game_sessions_obj = fetch_game_sessions_obj(
+        game_sessions_summary_obj = fetch_game_sessions_summary(
             db_session=db_session, journal_id=args.journal
         )
-        # # Raw SQL implementation
-        # game_sessions_obj = fetch_game_sessions_obj_raw(
-        #     db_session=db_session, journal_id=args.journal
-        # )
-
-        data = []
-        for obj in game_sessions_obj:
-            data.append(obj)
+        game_sessions_summary = []
+        for obj in game_sessions_summary_obj:
+            game_sessions_summary.append(list(obj))
 
         if args.push_to_bucket:
-            push_stats(data=data, filename="game_session_ids.json")
-        else:
-            print(json.dumps(data))
+            push_stats(
+                data=game_sessions_summary, filename="game_sessions_summary.json"
+            )
+
+        # # # SQLAlchemy implementation
+        # # game_sessions_obj = fetch_game_sessions_obj(
+        # #     db_session=db_session, journal_id=args.journal
+        # # )
+        # Raw SQL implementation
+        game_sessions_obj = fetch_game_sessions_obj_sql(
+            db_session=db_session, journal_id=args.journal
+        )
+        game_sessions = []
+        for obj in game_sessions_obj:
+            game_sessions.append(obj)
+
+        if args.push_to_bucket:
+            push_stats(data=game_sessions, filename="game_sessions.json")
+
+        if not args.push_to_bucket:
+            print(
+                json.dumps(
+                    {
+                        "game_sessions_summary": game_sessions_summary,
+                        "game_sessions": game_sessions,
+                    }
+                )
+            )
 
 
 def main() -> None:
@@ -399,12 +396,6 @@ def main() -> None:
         "--journal",
         required=True,
         help=f"Humbug journal ID with Great Wyrm votes",
-    )
-    parser_stats_update.add_argument(
-        "--chunk-size",
-        type=int,
-        default=DEFAULT_VOTES_CHUNK_SIZE,
-        help="Size of processing votes at one moment",
     )
     parser_stats_update.add_argument(
         "--push-to-bucket",
