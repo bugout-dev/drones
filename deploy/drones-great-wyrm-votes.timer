@@ -1,9 +1,9 @@
 [Unit]
-Description=Run Great Wyrm votes stats generation every 10 minutes
+Description=Run Great Wyrm votes stats generation every 5 minutes
 
 [Timer]
 OnBootSec=10s
-OnUnitActiveSec=10m
+OnUnitActiveSec=5m
 
 [Install]
 WantedBy=timers.target
