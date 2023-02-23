@@ -24,16 +24,23 @@ SECRETS_DIR="${SECRETS_DIR:-/home/ubuntu/drones-secrets}"
 PARAMETERS_ENV_PATH="${SECRETS_DIR}/app.env"
 
 DRONES_SERVICE_FILE="drones.service"
+
 # Drones statistics generator
 DRONES_STATISTICS_SERVICE_FILE="drones-statistics.service"
 DRONES_STATISTICS_TIMER_FILE="drones-statistics.timer"
+
 # Drones Humbug report loader
 DRONES_HUMBUG_REPORT_LOADER_FILE="drones-humbug-reports.service"
+
 # Drones journal rules
 DRONES_RULE_UNLOCK_SERVICE_FILE="drones-rule-unlock.service"
 DRONES_RULE_UNLOCK_TIMER_FILE="drones-rule-unlock.timer"
 DRONES_RULE_CLEAN_LARGE_JOURNALS_SERVICE_FILE="drones-clean-large-journals.service"
 DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE="drones-clean-large-journals.timer"
+
+# Drones for Great Wyrm
+DRONES_GREAT_WYRM_VOTES_SERVICE_FILE="drones-great-wyrm-votes.service"
+DRONES_GREAT_WYRM_VOTES_TIMER_FILE="drones-great-wyrm-votes.timer"
 
 set -eu
 
@@ -101,3 +108,13 @@ cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_LARGE_JOURNALS_SERVICE_FILE}" "/home/ubunt
 cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}"
 XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
 XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}"
+
+# Great Wyrm
+echo
+echo
+echo -e "${PREFIX_INFO} Replacing existing Drones Great Wyrm votes stats generation service and timer with: ${DRONES_GREAT_WYRM_VOTES_SERVICE_FILE}, ${DRONES_GREAT_WYRM_VOTES_TIMER_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_GREAT_WYRM_VOTES_SERVICE_FILE}" "${SCRIPT_DIR}/${DRONES_GREAT_WYRM_VOTES_TIMER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_GREAT_WYRM_VOTES_SERVICE_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_GREAT_WYRM_VOTES_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_GREAT_WYRM_VOTES_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_GREAT_WYRM_VOTES_TIMER_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_GREAT_WYRM_VOTES_TIMER_FILE}"

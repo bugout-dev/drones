@@ -2,4 +2,4 @@
 Drones library and API version.
 """
 
-DRONES_VERSION = "0.1.4"
+DRONES_VERSION = "0.1.5"
