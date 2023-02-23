@@ -198,6 +198,9 @@ def fetch_game_sessions_obj_sql(db_session: Session, journal_id: UUID) -> List[A
         .json_data
     )
 
+    if result is None:
+        result = []
+
     return result
 
 
