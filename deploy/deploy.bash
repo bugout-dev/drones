@@ -38,6 +38,10 @@ DRONES_RULE_UNLOCK_TIMER_FILE="drones-rule-unlock.timer"
 DRONES_RULE_CLEAN_LARGE_JOURNALS_SERVICE_FILE="drones-clean-large-journals.service"
 DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE="drones-clean-large-journals.timer"
 
+# Drones token rules
+DRONES_RULE_CLEAN_OLD_TOKENS_SERVICE_FILE="drones-clean-old-tokens.service"
+DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE="drones-clean-old-tokens.timer"
+
 # Drones for Great Wyrm
 DRONES_GREAT_WYRM_VOTES_SERVICE_FILE="drones-great-wyrm-votes.service"
 DRONES_GREAT_WYRM_VOTES_TIMER_FILE="drones-great-wyrm-votes.timer"
@@ -108,6 +112,16 @@ cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_LARGE_JOURNALS_SERVICE_FILE}" "/home/ubunt
 cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}"
 XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
 XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_RULE_CLEAN_LARGE_JOURNALS_TIMER_FILE}"
+
+# Tokens
+echo
+echo
+echo -e "${PREFIX_INFO} Replacing existing Drones clean old tokens rule service and timer with: ${DRONES_RULE_CLEAN_OLD_TOKENS_SERVICE_FILE}, ${DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE}"
+chmod 644 "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_OLD_TOKENS_SERVICE_FILE}" "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_OLD_TOKENS_SERVICE_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_CLEAN_OLD_TOKENS_SERVICE_FILE}"
+cp "${SCRIPT_DIR}/${DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE}" "/home/ubuntu/.config/systemd/user/${DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE}"
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user daemon-reload
+XDG_RUNTIME_DIR="/run/user/1000" systemctl --user restart --no-block "${DRONES_RULE_CLEAN_OLD_TOKENS_TIMER_FILE}"
 
 # Great Wyrm
 echo

@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean old tokens from the database
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/drones
+EnvironmentFile=/home/ubuntu/drones-secrets/app.env
+ExecStart=/home/ubuntu/drones-env/bin/python -m drones.cli cleanup tokens --max-lifetime 60
+SyslogIdentifier=drones-clean-old-tokens
