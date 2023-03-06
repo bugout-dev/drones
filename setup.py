@@ -30,11 +30,12 @@ setup(
     zip_safe=False,
     install_requires=[
         "boto3",
+        "bugout-brood>=0.3.1",
+        "bugout-spire>=0.4.2",
         "fastapi",
         "redis",
         "pydantic",
         "sendgrid",
-        "bugout-spire>=0.4.2",
         "sqlalchemy",
         "tqdm",
     ],
