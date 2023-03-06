@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean old tokens from the database
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=23h
+
+[Install]
+WantedBy=timers.target
