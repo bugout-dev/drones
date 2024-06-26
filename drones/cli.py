@@ -1,40 +1,37 @@
 import argparse
+import json
+import logging
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from distutils.util import strtobool
-from contextlib import contextmanager
-import logging
-from typing import List, Optional, Generator
+from typing import Any, Dict, Generator, List, Optional
 from uuid import UUID
-import time
 
 from brood.external import SessionLocal as session_local_brood
 from brood.settings import BUGOUT_URL
 from spire.db import (
-    SessionLocal as session_local_spire,
-    create_spire_engine,
-    SPIRE_DB_URI,
-    BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
     BUGOUT_SPIRE_THREAD_DB_MAX_OVERFLOW,
+    BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
     SPIRE_DB_POOL_RECYCLE_SECONDS,
+    SPIRE_DB_URI,
 )
-from spire.journal.models import JournalEntryLock, JournalEntry, Journal
+from spire.db import SessionLocal as session_local_spire
+from spire.db import create_spire_engine
+from spire.journal.models import Journal, JournalEntry, JournalEntryLock
 from sqlalchemy import func, text
 from sqlalchemy.orm import sessionmaker
 
-from .data import (
-    StatsTypes,
-    TimeScales,
-    RedisPickCommand,
-)
-from . import reports
-from . import statistics
+from . import reports, statistics
+from .data import RedisPickCommand, StatsTypes, TimeScales
+from .humbug_reports import pick_humbug_tasks_queue, process_humbug_tasks_queue
 from .migrations import ACTIONS, MIGRATIONS
-from .humbug_reports import process_humbug_tasks_queue, pick_humbug_tasks_queue
 from .settings import (
+    DRONES_CONFIG_FILE_PATH,
+    REDIS_FAILED_REPORTS_QUEUE,
+    REDIS_REPORTS_QUEUE,
     REPORTS_CHUNK_SIZE,
     WAITING_UNTIL_NEW_REPORTS,
-    REDIS_REPORTS_QUEUE,
-    REDIS_FAILED_REPORTS_QUEUE,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -257,6 +254,18 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
     Clean entries from journal.
     """
 
+    drones_config: Optional[Dict[str, Any]] = None
+    # Fetch unlimited journals list from drones config
+    try:
+        with open(DRONES_CONFIG_FILE_PATH, "r") as ifp:
+            drones_config = json.load(ifp)
+    except Exception as err:
+        logger.warning(f"Unable to parse configuration file, err: {err}")
+
+    unlim_journals: List[str] = []
+    if drones_config is not None:
+        unlim_journals = drones_config.get("unlimited_large_journals", None)
+
     custom_engine = create_spire_engine(
         url=SPIRE_DB_URI,
         pool_size=BUGOUT_SPIRE_THREAD_DB_POOL_SIZE,
@@ -277,6 +286,7 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
                     Journal.id,
                 )
                 .join(Journal, Journal.id == JournalEntry.journal_id)
+                .filter(Journal.id.notin_(unlim_journals))
                 .filter(Journal.search_index == None)
                 .group_by(Journal.name, Journal.id)
             )
