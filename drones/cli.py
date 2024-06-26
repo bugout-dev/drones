@@ -1,9 +1,19 @@
 import argparse
+<<<<<<< Updated upstream
 from datetime import datetime, timedelta
 from distutils.util import strtobool
 from contextlib import contextmanager
 import logging
 from typing import List, Optional, Generator
+=======
+import json
+import logging
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from distutils.util import strtobool
+from typing import Any, Dict, Generator, List, Optional
+>>>>>>> Stashed changes
 from uuid import UUID
 import time
 
@@ -31,6 +41,9 @@ from . import statistics
 from .migrations import ACTIONS, MIGRATIONS
 from .humbug_reports import process_humbug_tasks_queue, pick_humbug_tasks_queue
 from .settings import (
+    DRONES_CONFIG_FILE_PATH,
+    REDIS_FAILED_REPORTS_QUEUE,
+    REDIS_REPORTS_QUEUE,
     REPORTS_CHUNK_SIZE,
     WAITING_UNTIL_NEW_REPORTS,
     REDIS_REPORTS_QUEUE,
@@ -256,6 +269,18 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
     """
     Clean entries from journal.
     """
+    
+    drones_config: Optional[Dict[str, Any]] = None
+    # Fetch unlimited journals list from drones config
+    try:
+        with open(DRONES_CONFIG_FILE_PATH, "r") as ifp:
+            drones_config = json.load(ifp)
+    except Exception as err:
+        logger.warning(f"Unable to parse configuration file, err: {err}")
+
+    unlim_journals: List[str] = []
+    if drones_config is not None:
+        unlim_journals = drones_config.get("unlimited-large-journals", None)
 
     custom_engine = create_spire_engine(
         url=SPIRE_DB_URI,
@@ -277,6 +302,7 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
                     Journal.id,
                 )
                 .join(Journal, Journal.id == JournalEntry.journal_id)
+                .filter(Journal.id.notin_(unlim_journals))
                 .filter(Journal.search_index == None)
                 .group_by(Journal.name, Journal.id)
             )
