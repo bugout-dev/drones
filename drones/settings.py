@@ -47,4 +47,6 @@ MOONSTREAM_S3_PUBLIC_DATA_BUCKET_PREFIX = os.environ.get(
     "MOONSTREAM_S3_PUBLIC_DATA_BUCKET_PREFIX", "dev"
 )
 
-DRONES_CONFIG_FILE_PATH = os.getenv("DRONES_CONFIG_FILE_PATH", "/home/ubuntu/.drones/config.json")
+DRONES_CONFIG_FILE_PATH = os.getenv(
+    "DRONES_CONFIG_FILE_PATH", "/home/ubuntu/.drones/config.json"
+)
