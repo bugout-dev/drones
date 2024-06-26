@@ -264,7 +264,7 @@ def journal_entries_cleanup_handler(args: argparse.Namespace) -> None:
 
     unlim_journals: List[str] = []
     if drones_config is not None:
-        unlim_journals = drones_config.get("unlimited-large-journals", None)
+        unlim_journals = drones_config.get("unlimited_large_journals", None)
 
     custom_engine = create_spire_engine(
         url=SPIRE_DB_URI,
